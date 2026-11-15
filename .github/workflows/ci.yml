@@ -4,6 +4,11 @@ name: CI
 
 on: [push, pull_request]
 
+# Least privilege: read the code, and read PR commits (the secret scan lists them on PRs).
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest

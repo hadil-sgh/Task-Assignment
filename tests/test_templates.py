@@ -19,6 +19,8 @@ EXPECTED_LAYOUTS = [
     "Two Content",
     "Comparison",
     "Title Only",
+    "Chart and Text",
+    "Table",
 ]
 
 
@@ -40,7 +42,7 @@ def accent1(prs: Presentation) -> str:
 
 
 @pytest.mark.parametrize("team", TEAMS)
-def test_template_has_the_six_layouts_and_no_slides(team: str) -> None:
+def test_template_has_the_eight_layouts_and_no_slides(team: str) -> None:
     prs = load(team)
     assert [layout.name for layout in prs.slide_layouts] == EXPECTED_LAYOUTS
     assert len(prs.slides) == 0
@@ -57,6 +59,17 @@ def test_no_footer_placeholders_left(team: str) -> None:
     footer = {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLIDE_NUMBER}
     for layout in load(team).slide_layouts:
         assert not [ph for ph in layout.placeholders if ph.placeholder_format.type in footer]
+
+
+@pytest.mark.parametrize("team", TEAMS)
+def test_chart_and_table_layouts_have_native_placeholders(team: str) -> None:
+    layouts = {layout.name: layout for layout in load(team).slide_layouts}
+    types = {
+        name: {ph.placeholder_format.type for ph in layouts[name].placeholders}
+        for name in ("Chart and Text", "Table")
+    }
+    assert PP_PLACEHOLDER.CHART in types["Chart and Text"]
+    assert PP_PLACEHOLDER.TABLE in types["Table"]
 
 
 def test_all_teams_share_the_same_layouts_and_placeholders() -> None:

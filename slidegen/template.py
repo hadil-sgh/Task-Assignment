@@ -1,11 +1,13 @@
 """Read a .pptx template into a short layout catalog, and pick the team template for some notes.
 
-The model never sees template XML. It sees a catalog of about 100 tokens, for example:
+The model never sees template XML. It sees a catalog of about 250 tokens, one line per
+distinct text layout, for example (from the company Master):
 
-    L4 Comparison: title<=56, head<=38, body<=8x38, head2<=38, body2<=8x38
+    L2 Title and 2 Columns: title<=51, head?<=120 "Optional Subheadline", body<=11x48, ...
 
-Each budget comes from the placeholder's box size and its font size in the template:
-"8x38" means 8 bullets of up to 38 characters; "56" means up to 56 characters in total.
+Each budget comes from the placeholder's box size and its font in the template:
+"11x48" means 11 bullets of up to 48 characters; "51" means up to 51 characters in total.
+A "?" marks an optional slot, and a quoted hint repeats the template's own prompt text.
 The catalog is cached as JSON next to the template and rebuilt when the file changes.
 """
 
@@ -15,22 +17,30 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from lxml import etree
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 from pptx.util import Emu
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+MASTER = TEMPLATE_DIR / "master.pptx"  # the company template: the default, and team "base"
+TEAMS = ["base", "engineering", "finance", "marketing"]  # the others are built from MASTER
 DEFAULT_TEAM = "base"
-CATALOG_VERSION = 1  # bump when the budget rules change, so old caches are rebuilt
+CATALOG_VERSION = 3  # bump when the budget rules change, so old caches are rebuilt
 
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 TEXT_TYPES = TITLE_TYPES | {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
 IGNORED_TYPES = {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLIDE_NUMBER}
 
-AVG_CHAR_EM = 0.5  # average Arial-like character width, as a fraction of the font size
-BOLD_CHAR_EM = 0.55
-LINE_HEIGHT = 1.2  # line height as a multiple of the font size at 100% line spacing
+# Average character width as a fraction of the font size, measured on sample sentences in
+# Arial and Arial Narrow, plus about 5% margin. An estimate for the budget only; the fitter
+# later measures the real text with the real font.
+CHAR_EM = {"regular": 0.5, "regular bold": 0.53, "narrow": 0.41, "narrow bold": 0.44}
+CAPS_FACTOR = 1.2  # ALL CAPS text is about 20% wider than mixed case
+LINE_HEIGHT = 1.12  # Arial family: ascent + descent = 1.12 x font size at 100% spacing
+GENERIC_PROMPTS = ("click to edit", "master")  # template boilerplate, not a useful hint
 
 
 @dataclass
@@ -41,6 +51,8 @@ class Slot:
     lines: int
     chars: int  # characters per line
     font_pt: float  # font size in the template
+    optional: bool = False
+    hint: str = ""  # the template's prompt text, e.g. "Optional: Sources and/or captions"
 
     @property
     def budget(self) -> int:
@@ -48,7 +60,11 @@ class Slot:
 
     def describe(self) -> str:
         limit = f"{self.lines}x{self.chars}" if self.kind == "list" else str(self.budget)
-        return f"{self.name}<={limit}"
+        hint = f' "{self.hint}"' if self.hint else ""
+        return f"{self.name}{'?' if self.optional else ''}<={limit}{hint}"
+
+    def shape(self) -> tuple:
+        return (self.name, self.kind, self.lines, self.chars, self.optional)
 
 
 @dataclass
@@ -100,6 +116,7 @@ def load_catalog(template: Path) -> Catalog:
 
 def build_catalog(template: Path, key: str = "") -> Catalog:
     prs = Presentation(template)
+    fonts = _theme_fonts(prs.slide_master)
     layouts = []
     for index, layout in enumerate(prs.slide_layouts):
         placeholders = [
@@ -107,9 +124,32 @@ def build_catalog(template: Path, key: str = "") -> Catalog:
         ]
         if not placeholders or not all(_is_text(p) for p in placeholders):
             continue  # skip layouts with pictures, charts, tables, or no text at all
-        slots = _name_slots([_measure(p, prs.slide_master) for p in placeholders], placeholders)
-        layouts.append(Layout(f"L{index}", layout.name, slots))
-    return Catalog(template.name, key, layouts)
+        slots = [_measure(p, prs.slide_master, fonts) for p in placeholders]
+        layouts.append(Layout(f"L{index}", layout.name, _name_slots(slots, placeholders)))
+    return Catalog(template.name, key, dedupe(layouts))
+
+
+def dedupe(layouts: list[Layout]) -> list[Layout]:
+    """Keep the first of layouts with identical slots, e.g. a white and a blue colour variant.
+
+    The model only needs each structure once; it saves tokens and avoids random style switches.
+    """
+    seen: set[tuple] = set()
+    kept = []
+    for layout in layouts:
+        shape = tuple(slot.shape() for slot in layout.slots)
+        if shape not in seen:
+            seen.add(shape)
+            kept.append(layout)
+    return kept
+
+
+def _theme_fonts(master) -> dict[str, str]:
+    """Theme font names: '+mj-lt' (headings) and '+mn-lt' (body) point to these."""
+    theme = etree.fromstring(master.part.part_related_by(RT.THEME).blob)
+    major = theme.find(f".//{qn('a:majorFont')}/{qn('a:latin')}")
+    minor = theme.find(f".//{qn('a:minorFont')}/{qn('a:latin')}")
+    return {"+mj-lt": major.get("typeface", ""), "+mn-lt": minor.get("typeface", "")}
 
 
 def _is_text(ph) -> bool:
@@ -128,20 +168,39 @@ def _from_dict(data: dict) -> Catalog:
 # ---------------------------------------------------------------- measuring a placeholder
 
 
-def _measure(ph, master) -> Slot:
-    """Work out how many lines and characters fit in a placeholder at its template font size."""
+def _measure(ph, master, fonts: dict[str, str]) -> Slot:
+    """Work out how many lines and characters fit in a placeholder at its template font."""
     style = _style_sources(ph, master)
     size = int(_find(style, "a:defRPr", "sz") or 1800) / 100
     bold = _find(style, "a:defRPr", "b") == "1"
+    caps = _find(style, "a:defRPr", "cap") == "all"
+    is_title = ph.placeholder_format.type in TITLE_TYPES
+    font = _find(style, "a:defRPr/a:latin", "typeface") or ("+mj-lt" if is_title else "+mn-lt")
+    font = fonts.get(font, font)
     indent = Emu(int(_find(style, None, "marL") or 0)).pt
     spacing = int(_find(style, "a:lnSpc/a:spcPct", "val") or 100000) / 100000
     gap = int(_find(style, "a:spcBef/a:spcPts", "val") or 0) / 100  # space before each paragraph
-    left, right, top, bottom = _insets(ph, master)
+    left, right, top, bottom = _insets(ph)
     width = Emu(ph.width).pt - left - right - indent
     height = Emu(ph.height).pt - top - bottom
-    chars = int(width / (size * (BOLD_CHAR_EM if bold else AVG_CHAR_EM)))
+    family = "narrow" if re.search(r"narrow|condensed", font, re.IGNORECASE) else "regular"
+    style_key = f"{family} bold" if bold else family
+    char_width = size * CHAR_EM[style_key] * (CAPS_FACTOR if caps else 1)
+    chars = int(width / char_width)
     lines = max(1, int((height + gap) / (size * LINE_HEIGHT * spacing + gap)))
-    return Slot("", ph.placeholder_format.idx, "text", lines, chars, size)
+    hint = _hint(ph)
+    optional = hint.lower().startswith("optional")
+    return Slot("", ph.placeholder_format.idx, "text", lines, chars, size, optional, hint)
+
+
+def _hint(ph) -> str:
+    """The layout's own prompt text ("Optional Subheadline"), unless it is boilerplate."""
+    text = (
+        re.sub(r"\s*[\n\v\x0b]+\s*", ", ", ph.text_frame.text).strip(" ,")
+        if ph.has_text_frame
+        else ""
+    )
+    return "" if any(word in text.lower() for word in GENERIC_PROMPTS) else text[:60]
 
 
 def _style_sources(ph, master) -> list:
@@ -175,7 +234,7 @@ def _find(sources: list, path: str | None, attr: str) -> str | None:
     return None
 
 
-def _insets(ph, master) -> tuple[float, float, float, float]:
+def _insets(ph) -> tuple[float, float, float, float]:
     """Inner text margins in points (PowerPoint default: 0.1 in sides, 0.05 in top/bottom)."""
     body_pr = ph.element.txBody.find(qn("a:bodyPr")) if ph.element.txBody is not None else None
     defaults = {"lIns": 91440, "rIns": 91440, "tIns": 45720, "bIns": 45720}
@@ -187,15 +246,19 @@ def _name_slots(slots: list[Slot], placeholders: list) -> list[Slot]:
     """Give slots stable, readable names: title, subtitle, then heads and bodies left to right.
 
     A body box with room for one line only is a heading ("head"); larger ones hold bullets.
+    On a layout without bullet boxes, a one-line box is the subtitle. Subtitles are optional.
     """
     order = sorted(zip(slots, placeholders, strict=True), key=lambda sp: (sp[1].left, sp[1].top))
+    has_bullets = any(
+        slot.lines > 1 and ph.placeholder_format.type not in TITLE_TYPES for slot, ph in order
+    )
     counts: dict[str, int] = {}
     for slot, ph in order:
         kind = ph.placeholder_format.type
         if kind in TITLE_TYPES:
             base = "title"
-        elif kind == PP_PLACEHOLDER.SUBTITLE:
-            base = "subtitle"
+        elif kind == PP_PLACEHOLDER.SUBTITLE or (slot.lines == 1 and not has_bullets):
+            base, slot.optional = "subtitle", True
         elif slot.lines == 1:
             base = "head"
         else:
@@ -248,11 +311,18 @@ def pick_team(notes: str) -> str:
 
 
 def resolve_template(notes: str, team: str | None = None, template: Path | None = None) -> Path:
-    """An explicit template file wins, then an explicit team, then the content-based pick."""
+    """Which template to use, in order of priority:
+
+    1. an explicit template file (--template);
+    2. a team (--team finance), or "auto" to pick the team from the notes;
+    3. otherwise the company Master.
+    """
     if template is not None:
         return template
-    path = TEMPLATE_DIR / f"{team or pick_team(notes)}.pptx"
-    if not path.exists():
-        teams = sorted(p.stem for p in TEMPLATE_DIR.glob("*.pptx"))
-        raise ValueError(f"Unknown team {team!r}. Choose one of: {', '.join(teams)}")
-    return path
+    if team is None:
+        return MASTER
+    if team == "auto":
+        team = pick_team(notes)
+    if team not in TEAMS:
+        raise ValueError(f"Unknown team {team!r}. Choose one of: auto, {', '.join(TEAMS)}")
+    return MASTER if team == "base" else TEMPLATE_DIR / f"{team}.pptx"

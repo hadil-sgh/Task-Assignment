@@ -4,7 +4,7 @@ import socket
 
 import pytest
 
-from slidegen.template import TEMPLATE_DIR, Catalog, build_catalog
+from slidegen.template import MASTER, Catalog, build_catalog
 
 API_KEY_VAR = "OPENROUTER_API_KEY"
 
@@ -24,5 +24,5 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(scope="session")
 def catalog() -> Catalog:
-    """Catalog of the base template (built directly, so no cache file is written)."""
-    return build_catalog(TEMPLATE_DIR / "base.pptx")
+    """Catalog of the company Master (built directly, so no cache file is written)."""
+    return build_catalog(MASTER)

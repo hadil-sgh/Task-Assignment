@@ -19,7 +19,8 @@ Layout catalog (id, name, then the slots each layout has and their limits):
 {catalog}
 
 "title<=60" means at most 60 characters. "body<=8x40" means at most 8 bullets of at most 40
-characters each.
+characters each. A "?" after a slot name marks it optional. Quoted text is the template's own
+description of the slot.
 
 Rules:
 - Use as few slides as the content needs, never more than {max_slides}.
@@ -30,8 +31,9 @@ Rules:
 - Titles state the point of the slide as a short statement, not a topic label.
 - Bullets are short fragments, not full sentences, without bullet characters.
 - Keep exact numbers, names, dates and units from the notes. Never invent facts or figures.
-- Fill every slot of the chosen layout. Only the subtitle and a body of at most 2 lines may be
-  left empty. Slots the layout does not have stay empty ("" or []).
+- Fill every slot of the chosen layout. Optional slots ("?") may stay empty; leave them empty
+  rather than invent content (no made-up presenter, date or source). Slots the layout does
+  not have stay empty ("" or []).
 - Stay within the limits of the chosen layout.
 - Write in the language of the notes.
 

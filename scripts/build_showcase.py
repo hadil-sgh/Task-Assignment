@@ -8,14 +8,12 @@ Writes out/showcase/<template>.pptx
 
 from pathlib import Path
 
-from build_templates import remove_sample_slides
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
-from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.oxml import parse_xml
-from pptx.oxml.ns import nsdecls
 from pptx.util import Inches, Pt
+
+from slidegen.deck import add_footer, remove_sample_slides
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = ROOT / "slidegen" / "templates"
@@ -93,29 +91,6 @@ def add_table(slide) -> None:
             cell = shape.table.cell(r, c)
             cell.text = value
             cell.text_frame.paragraphs[0].runs[0].font.size = Pt(16)
-
-
-def add_footer(slide, footer: str, date: str) -> None:
-    """Put the layout's footer, date and slide number boxes on the slide.
-
-    python-pptx leaves these three out when it creates a slide, so we copy them from the
-    layout (the Master's own boxes, at the Master's positions) and fill them.
-    """
-    texts = {PP_PLACEHOLDER.FOOTER: footer, PP_PLACEHOLDER.DATE: date}
-    for layout_ph in slide.slide_layout.placeholders:
-        kind = layout_ph.placeholder_format.type
-        if kind not in (*texts, PP_PLACEHOLDER.SLIDE_NUMBER):
-            continue
-        slide.shapes.clone_placeholder(layout_ph)
-        frame = slide.placeholders[layout_ph.placeholder_format.idx].text_frame
-        if kind in texts:
-            frame.text = texts[kind]
-        else:  # a slide-number field: PowerPoint shows the current number
-            old = frame.paragraphs[0]._p
-            old.getparent().replace(old, parse_xml(
-                f'<a:p {nsdecls("a")}><a:fld id="{{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}}" '
-                'type="slidenum"><a:rPr lang="en-US"/><a:t>‹#›</a:t></a:fld></a:p>'
-            ))  # fmt: skip
 
 
 def build_showcase(template: Path) -> Path:

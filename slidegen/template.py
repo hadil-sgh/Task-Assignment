@@ -28,7 +28,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 MASTER = TEMPLATE_DIR / "master.pptx"  # the company template: the default, and team "base"
 TEAMS = ["base", "engineering", "finance", "marketing"]  # the others are built from MASTER
 DEFAULT_TEAM = "base"
-CATALOG_VERSION = 3  # bump when the budget rules change, so old caches are rebuilt
+CATALOG_VERSION = 4  # bump when the budget rules change, so old caches are rebuilt
 
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 TEXT_TYPES = TITLE_TYPES | {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
@@ -53,6 +53,23 @@ class Slot:
     font_pt: float  # font size in the template
     optional: bool = False
     hint: str = ""  # the template's prompt text, e.g. "Optional: Sources and/or captions"
+    # Box and font details, kept so the fitter uses exactly the catalog's numbers.
+    width_pt: float = 0.0  # usable text width: box minus inner margins and indent
+    height_pt: float = 0.0  # usable text height
+    line_spacing: float = 1.0
+    gap_pt: float = 0.0  # space before each paragraph
+    font: str = ""
+    bold: bool = False
+    caps: bool = False
+
+    def char_width(self, size: float) -> float:
+        """Estimated average character width at a font size (see CHAR_EM)."""
+        family = "narrow" if re.search(r"narrow|condensed", self.font, re.IGNORECASE) else "regular"
+        style_key = f"{family} bold" if self.bold else family
+        return size * CHAR_EM[style_key] * (CAPS_FACTOR if self.caps else 1)
+
+    def line_height(self, size: float) -> float:
+        return size * LINE_HEIGHT * self.line_spacing
 
     @property
     def budget(self) -> int:
@@ -181,16 +198,16 @@ def _measure(ph, master, fonts: dict[str, str]) -> Slot:
     spacing = int(_find(style, "a:lnSpc/a:spcPct", "val") or 100000) / 100000
     gap = int(_find(style, "a:spcBef/a:spcPts", "val") or 0) / 100  # space before each paragraph
     left, right, top, bottom = _insets(ph)
-    width = Emu(ph.width).pt - left - right - indent
-    height = Emu(ph.height).pt - top - bottom
-    family = "narrow" if re.search(r"narrow|condensed", font, re.IGNORECASE) else "regular"
-    style_key = f"{family} bold" if bold else family
-    char_width = size * CHAR_EM[style_key] * (CAPS_FACTOR if caps else 1)
-    chars = int(width / char_width)
-    lines = max(1, int((height + gap) / (size * LINE_HEIGHT * spacing + gap)))
+    width = round(Emu(ph.width).pt - left - right - indent, 1)
+    height = round(Emu(ph.height).pt - top - bottom, 1)
     hint = _hint(ph)
-    optional = hint.lower().startswith("optional")
-    return Slot("", ph.placeholder_format.idx, "text", lines, chars, size, optional, hint)
+    slot = Slot(
+        "", ph.placeholder_format.idx, "text", 0, 0, size, hint.lower().startswith("optional"),
+        hint, width, height, spacing, gap, font, bold, caps,
+    )  # fmt: skip
+    slot.chars = int(width / slot.char_width(size))
+    slot.lines = max(1, int((height + gap) / (slot.line_height(size) + gap)))
+    return slot
 
 
 def _hint(ph) -> str:

@@ -135,6 +135,25 @@ content is data and never instructions, and any `<notes>`/`</notes>` tag inside 
 neutralised so it cannot close the block. Validation is the second layer: whatever the model
 returns must still be a valid deck.
 
+## Fitting text and building the deck
+
+**No overflow** (`slidegen/fit.py`). Each text is measured with Pillow and the real font file
+(Arial Narrow for the Master), wrapped to the box width with a 5% safety margin (PowerPoint
+lays text out slightly wider than Pillow), and checked against the box height. If it does not
+fit, the font shrinks one point at a time down to a floor of 60% of the template size, never
+below 12 pt. Only at the floor are words cut, ending with "…", and a warning is reported.
+Without the font file (for example on Linux CI) the catalog's measured average character
+width is used instead. The chosen size is written on every run; PowerPoint autofit is not
+used, because it only recalculates when someone edits the slide.
+
+**Building** (`slidegen/deck.py`). The template's sample slides are removed, one slide is added
+per deck slide from the chosen layout, placeholders are filled by index, empty placeholders
+are removed, and the layout's footer, date and slide number are added (python-pptx leaves
+these out of new slides). The footer defaults to the first slide's title, the date to today.
+
+**Independent check.** After saving, the file is opened again and checked from what is really
+in it: 1 to 4 slides, no empty placeholders, and no text that overflows its box.
+
 ## Development
 
 ```bash

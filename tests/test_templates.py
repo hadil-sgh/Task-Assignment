@@ -71,6 +71,18 @@ def test_only_content_boxes_get_bullets(team: str) -> None:
                 assert not has_bullet(ph), (layout.name, ph.placeholder_format.idx)
 
 
-def test_each_team_has_its_own_colour_and_keeps_the_master_navy() -> None:
-    assert len({accent(load(team), 2) for team in TEAMS}) == len(TEAMS)
-    assert {accent(load(team), 1) for team in TEAMS} == {accent(load("master"), 1)}
+def test_each_team_has_its_own_main_colour() -> None:
+    """Accent 1 colours the Master's titles, subheadlines, charts and tables."""
+    colours = {accent(load(team), 1) for team in TEAMS}
+    assert len(colours) == len(TEAMS)
+    assert accent(load("master"), 1) not in colours
+
+
+@pytest.mark.parametrize("team", TEAMS)
+def test_first_and_last_slides_keep_the_masters_colours(team: str) -> None:
+    """Their accent colours are pinned, so the team colours never reach them."""
+    for index in (TITLE_SLIDE, END_SLIDE):
+        layout = load(team).slide_layouts[index].element
+        assert not [r for r in layout.iter(qn("a:schemeClr")) if r.get("val").startswith("accent")]
+    end_slide = load(team).slide_layouts[END_SLIDE].element  # its address is the Master navy
+    assert accent(load("master"), 1) in {c.get("val") for c in end_slide.iter(qn("a:srgbClr"))}

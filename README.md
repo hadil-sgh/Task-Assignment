@@ -84,6 +84,32 @@ neutral base template is used when the signal is weak or tied, and `--team` over
 choice. A keyword score costs no tokens, gives the same answer every time and is easy to test.
 A wrong pick is harmless: every team template has the same layouts, so only the colours change.
 
+## Structured output and validation
+
+The model answers with JSON that follows a strict schema built from the catalog: per slide a
+`layout` (one of the catalog ids) and one field per slot name (`title`, `subtitle`, `head`,
+`head2` as text; `body`, `body2` as bullet lists), with unused slots left empty. The wire schema
+stays flat and has no length keywords, because providers support only part of JSON Schema in
+strict mode; limits are given in descriptions and the catalog, and enforced after the call.
+
+`slidegen/schema.py` then:
+
+1. pulls one JSON object out of the reply, even inside code fences or prose;
+2. checks types and 1 to 4 slides with Pydantic;
+3. checks every slide against its layout: known layout, no text in slots the layout lacks,
+   required slots filled, and length limits;
+4. returns every problem at once as `path: message`, for example
+   `slides[1].head2: must not be empty`, ready for one repair call.
+
+Each text has a **budget** (what fits at the template font size) and a **hard limit** at twice
+the budget. Between the two, the text is accepted and the font is reduced when the deck is
+built; above the hard limit it triggers the repair call.
+
+**Prompt injection.** The notes are wrapped in `<notes>` tags, the system prompt says their
+content is data and never instructions, and any `<notes>`/`</notes>` tag inside the notes is
+neutralised so it cannot close the block. Validation is the second layer: whatever the model
+returns must still be a valid deck.
+
 ## Development
 
 ```bash

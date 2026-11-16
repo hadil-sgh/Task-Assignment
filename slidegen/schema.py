@@ -173,16 +173,12 @@ def check_deck(deck: Deck, catalog: Catalog) -> tuple[list[str], list[str]]:
 
 
 def is_required(slot: Slot) -> bool:
-    """Titles and headings must be filled, and so must bullet boxes with room for 3+ lines.
+    """Every slot must be filled unless the catalog marks it optional ("?").
 
-    Optional: slots the catalog marks optional (subtitles, and boxes whose template prompt
-    says "Optional ..."), and short supporting text (a body of at most 2 lines).
+    Optional are subtitles and boxes whose template prompt says "Optional ...", such as the
+    Master's subheadline and source line.
     """
-    if slot.optional:
-        return False
-    if slot.kind == "text":
-        return slot.name != "subtitle"
-    return slot.lines > 2
+    return not slot.optional
 
 
 def _check_slot(slot: Slot, value) -> tuple[str | None, str | None]:

@@ -1,13 +1,13 @@
 """Read a .pptx template into a short layout catalog, and pick the team template for some notes.
 
-The model never sees template XML. It sees a catalog of about 100 tokens, for example:
+The model never sees template XML. It sees a catalog of about 250 tokens, one line per
+distinct text layout, for example (from the company Master):
 
-    L4 Comparison: title<=56, head<=38, body<=8x38, head2<=38, body2<=8x38
+    L2 Title and 2 Columns: title<=51, head?<=120 "Optional Subheadline", body<=11x48, ...
 
 Each budget comes from the placeholder's box size and its font in the template:
-"8x38" means 8 bullets of up to 38 characters; "56" means up to 56 characters in total.
-A "?" marks an optional slot, and a quoted hint repeats the template's own prompt text,
-for example: subtitle?<=82 "Presenter, Place, Date".
+"11x48" means 11 bullets of up to 48 characters; "51" means up to 51 characters in total.
+A "?" marks an optional slot, and a quoted hint repeats the template's own prompt text.
 The catalog is cached as JSON next to the template and rebuilt when the file changes.
 """
 
@@ -37,7 +37,7 @@ IGNORED_TYPES = {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLID
 # Average character width as a fraction of the font size, measured on sample sentences in
 # Arial and Arial Narrow, plus about 5% margin. An estimate for the budget only; the fitter
 # later measures the real text with the real font.
-CHAR_EM = {"regular": 0.5, "bold": 0.53, "narrow": 0.41, "narrow bold": 0.44}
+CHAR_EM = {"regular": 0.5, "regular bold": 0.53, "narrow": 0.41, "narrow bold": 0.44}
 CAPS_FACTOR = 1.2  # ALL CAPS text is about 20% wider than mixed case
 LINE_HEIGHT = 1.12  # Arial family: ascent + descent = 1.12 x font size at 100% spacing
 GENERIC_PROMPTS = ("click to edit", "master")  # template boilerplate, not a useful hint
@@ -184,8 +184,8 @@ def _measure(ph, master, fonts: dict[str, str]) -> Slot:
     width = Emu(ph.width).pt - left - right - indent
     height = Emu(ph.height).pt - top - bottom
     family = "narrow" if re.search(r"narrow|condensed", font, re.IGNORECASE) else "regular"
-    key = f"{family} bold".replace("regular ", "") if bold else family
-    char_width = size * CHAR_EM[key] * (CAPS_FACTOR if caps else 1)
+    style_key = f"{family} bold" if bold else family
+    char_width = size * CHAR_EM[style_key] * (CAPS_FACTOR if caps else 1)
     chars = int(width / char_width)
     lines = max(1, int((height + gap) / (size * LINE_HEIGHT * spacing + gap)))
     hint = _hint(ph)

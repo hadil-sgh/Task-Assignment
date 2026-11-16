@@ -31,6 +31,11 @@ Rules:
 - Titles state the point of the slide as a short statement, not a topic label.
 - Bullets are short fragments, not full sentences, without bullet characters.
 - Keep exact numbers, names, dates and units from the notes. Never invent facts or figures.
+- When the notes compare several options on several figures, show them in a table (it takes
+  the place of the layout's first bullet box, so leave "body" empty). When one figure is
+  compared across items, or for percentages and shares, use a bar chart on a layout that has
+  a chart. Use only numbers that appear in the notes; never calculate new ones. Leave "table"
+  and "chart" empty when not used.
 - Fill every slot of the chosen layout. Optional slots ("?") may stay empty; leave them empty
   rather than invent content (no made-up presenter, date or source). Slots the layout does
   not have stay empty ("" or []).

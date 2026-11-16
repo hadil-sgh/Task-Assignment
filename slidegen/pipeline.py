@@ -68,11 +68,11 @@ def ask_model(notes: str, catalog: Catalog, client, result: Result) -> Deck:
     try:
         answer = call(client, first_messages(notes, catalog), schema, result)
         try:
-            deck, warnings = parse_deck(answer, catalog)
+            deck, warnings = parse_deck(answer, catalog, notes)
         except DeckError as error:
             result.outcome = "repaired"
             messages = repair_messages(notes, catalog, answer, error.errors)
-            deck, warnings = parse_deck(call(client, messages, schema, result), catalog)
+            deck, warnings = parse_deck(call(client, messages, schema, result), catalog, notes)
     except (MissingKeyError, RejectedKeyError):
         raise
     except (LLMError, DeckError) as error:

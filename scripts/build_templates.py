@@ -39,9 +39,8 @@ TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "slidegen" / "templates"
 MASTER = TEMPLATE_DIR / "master.pptx"
 W, H = 13.333, 7.5  # slide size in inches
 
-# Colours of the Master: navy and blues from its theme, greens and teals from its cover.
-NAVY, PERIWINKLE, PALE = "003282", "6673B8", "BAC6E7"
-GREEN = "00966D"
+# Colours of the Master: navy from its theme, green from its logo.
+NAVY, GREEN = "003282", "00966D"
 
 
 @dataclass

@@ -8,6 +8,7 @@ Writes out/showcase/<template>.pptx
 
 from pathlib import Path
 
+from build_templates import remove_sample_slides
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
@@ -119,9 +120,7 @@ def add_footer(slide, footer: str, date: str) -> None:
 
 def build_showcase(template: Path) -> Path:
     prs = Presentation(template)
-    for slide_id in list(prs.slides._sldIdLst):  # drop any sample slides
-        prs.part.drop_rel(slide_id.rId)
-        prs.slides._sldIdLst.remove(slide_id)
+    remove_sample_slides(prs)  # the Master ships with three
     for layout_index, texts in SLIDES:
         slide = prs.slides.add_slide(prs.slide_layouts[layout_index])
         for placeholder in list(slide.placeholders):

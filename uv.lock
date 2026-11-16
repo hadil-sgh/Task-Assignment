@@ -446,6 +446,7 @@ name = "slidegen"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pillow" },
     { name = "pydantic" },
     { name = "python-pptx" },
 ]
@@ -459,6 +460,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pydantic", specifier = ">=2.14.3" },
     { name = "python-pptx", specifier = ">=1.0.2" },
 ]

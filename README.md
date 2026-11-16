@@ -57,6 +57,33 @@ uv run python scripts/render.py out/showcase/*.pptx
 `scripts/render.py` exports every slide to PNG through PowerPoint, so the check shows exactly
 what a PowerPoint user will see (Windows only, development use; the tool itself does not need it).
 
+## How the model learns the template
+
+`slidegen/template.py` reads the template once with python-pptx and keeps only the text
+layouts (no picture, chart or table placeholders). For each placeholder it computes a
+character budget from the box size, inner margins, indent, line spacing and the font size the
+template sets, and turns the result into a catalog of about 100 tokens:
+
+```
+L0 Title Slide: title<=80, subtitle<=92
+L1 Title and Content: title<=104, body<=10x83
+L2 Key Message: title<=148, body<=2x74
+L3 Two Content: title<=104, body<=10x38, body2<=10x38
+L4 Comparison: title<=104, head<=33, body<=8x38, head2<=33, body2<=8x38
+L5 Title Only: title<=104
+```
+
+`body<=10x83` means up to 10 bullets of 83 characters. The model never sees template XML.
+The catalog is cached as `<template>.catalog.json`, keyed by a hash of the template file, so it
+rebuilds automatically when the template changes. Any .pptx works, including one we never
+designed for.
+
+**Which team template?** Chosen from the content of the notes: a short word list per team
+(English, French, German), plus money and percentage figures counting towards finance. The
+neutral base template is used when the signal is weak or tied, and `--team` overrides the
+choice. A keyword score costs no tokens, gives the same answer every time and is easy to test.
+A wrong pick is harmless: every team template has the same layouts, so only the colours change.
+
 ## Development
 
 ```bash

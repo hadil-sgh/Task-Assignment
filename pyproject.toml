@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Turn rough notes into a short, well-structured PowerPoint deck."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "python-pptx>=1.0.2",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "pywin32>=312 ; sys_platform == 'win32'",
     "ruff>=0.6",
 ]
 

@@ -25,9 +25,8 @@ from pptx.oxml.ns import qn
 from pptx.util import Emu
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-# The company's own template is the default. It is kept out of git (see .gitignore);
-# without it, the team templates are used.
-COMPANY_TEMPLATE = TEMPLATE_DIR / "company" / "Master.pptx"
+MASTER = TEMPLATE_DIR / "master.pptx"  # the company template: the default, and team "base"
+TEAMS = ["base", "engineering", "finance", "marketing"]  # the others are built from MASTER
 DEFAULT_TEAM = "base"
 CATALOG_VERSION = 3  # bump when the budget rules change, so old caches are rebuilt
 
@@ -315,16 +314,15 @@ def resolve_template(notes: str, team: str | None = None, template: Path | None 
     """Which template to use, in order of priority:
 
     1. an explicit template file (--template);
-    2. a named team (--team finance), or "auto" to pick the team from the notes;
-    3. the company template, when it is installed;
-    4. otherwise the team picked from the notes.
+    2. a team (--team finance), or "auto" to pick the team from the notes;
+    3. otherwise the company Master.
     """
     if template is not None:
         return template
-    if team is None and COMPANY_TEMPLATE.exists():
-        return COMPANY_TEMPLATE
-    path = TEMPLATE_DIR / f"{pick_team(notes) if team in (None, 'auto') else team}.pptx"
-    if not path.exists():
-        teams = sorted(p.stem for p in TEMPLATE_DIR.glob("*.pptx"))
-        raise ValueError(f"Unknown team {team!r}. Choose one of: {', '.join(teams)}")
-    return path
+    if team is None:
+        return MASTER
+    if team == "auto":
+        team = pick_team(notes)
+    if team not in TEAMS:
+        raise ValueError(f"Unknown team {team!r}. Choose one of: auto, {', '.join(TEAMS)}")
+    return MASTER if team == "base" else TEMPLATE_DIR / f"{team}.pptx"

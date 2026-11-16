@@ -22,5 +22,3 @@ dist/
 # Generated decks (the curated sample lives in samples/)
 out/
 
-# The company template is not ours to publish; keep it local
-slidegen/templates/company/

@@ -1,262 +1,181 @@
-"""Build the base template and its team variants on the text grid of the company Master.
+"""Build the team templates from the company Master template.
 
-python-pptx cannot create slide layouts from scratch, so this script starts from
-python-pptx's built-in default template and reshapes it in three steps:
+Each team template is a copy of slidegen/templates/master.pptx with three small changes:
 
-1. Theme: the Master's colours and font (Arial Narrow). Each team's colours go into
-   accent1..6, so bullets, charts and tables pick them up automatically.
-2. Master: text styles (bold uppercase titles, as in the Master) and the team decoration.
-3. Layouts: the Master's set of text layouts, with every box at the Master's position and
-   size (GRID in template_designs.py), plus a chart and a table layout.
+1. a team colour (theme accent 2, so it is also the second colour of native charts);
+2. bullet marks in that colour (the Master's body text has none);
+3. a few decorative shapes in the free margins of the content slides, drawn behind the
+   Master's own footer, date, slide number and logo.
 
-All templates share the same layout names and placeholder indexes, so the generator never
-changes per team; only the look does.
+Everything else is the Master's: its first and last slides, its layouts, every text box and
+font, the optional subheadline and source line, the footer, date and slide number. Because
+the layouts and placeholders are unchanged, the generator works the same with every team.
 
 Run:  uv run python scripts/build_templates.py
 Writes slidegen/templates/<team>.pptx
 """
 
-from copy import deepcopy
 from pathlib import Path
 
 from lxml import etree
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.enum.text import PP_ALIGN
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml import parse_xml
 from pptx.oxml.ns import nsdecls, qn
-from pptx.util import Inches
-from template_designs import (
-    BOTTOM,
-    CHART_BOX,
-    COLUMNS_2,
-    COLUMNS_3,
-    DEEP,
-    DESIGNS,
-    GRID,
-    NAVY,
-    PALE,
-    PANEL,
-    TEXT,
-    TOP,
-    WHITE,
-    Design,
-    H,
-    W,
-    place,
-)
+from pptx.oxml.shapes.autoshape import CT_Shape
+from pptx.shapes.autoshape import Shape
+from pptx.util import Inches, Pt
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "slidegen" / "templates"
-FONT = "Arial Narrow"  # the font of the company Master template
-SUBHEADLINE, SOURCE = 13, 22  # placeholder indexes we add, the same numbers as in the Master
+MASTER = TEMPLATE_DIR / "master.pptx"
+W, H = 13.333, 7.5  # slide size in inches
 
-# Our layout name -> (default layout it is made from, {placeholder index: role}).
-# Placeholders not listed are removed; listed indexes that do not exist yet are added.
-LAYOUTS = {
-    "Title Slide": ("Title Slide", {0: "cover_title", 1: "cover_subtitle"}),
-    "Title and Content": (
-        "Title and Content", {0: "title", SUBHEADLINE: "subheadline", 1: "body", SOURCE: "source"},
-    ),
-    "Title and 2 Columns": (
-        "Two Content",
-        {0: "title", SUBHEADLINE: "subheadline", 1: "col2_0", 2: "col2_1", SOURCE: "source"},
-    ),
-    "Title and 3 Columns": (
-        "Comparison",
-        {0: "title", SUBHEADLINE: "subheadline", 2: "col3_0", 3: "col3_1", 4: "col3_2",
-         SOURCE: "source"},
-    ),
-    "Title Only": ("Title Only", {0: "title", SUBHEADLINE: "subheadline"}),
-    "Separation Slide": ("Section Header", {0: "separation_title", 1: "separation_subtitle"}),
-    "End Slide": ("Title and Vertical Text", {0: "end_title", 1: "end_subtitle"}),
-    "Title, Text and Chart": (
-        "Content with Caption",
-        {0: "title", SUBHEADLINE: "subheadline", 2: "col2_0", 1: "chart", SOURCE: "source"},
-    ),
-    "Title and Table": (
-        "Picture with Caption", {0: "title", SUBHEADLINE: "subheadline", 1: "table", 2: "source"},
-    ),
-}  # fmt: skip
-
-# Prompt text written into the layouts, as in the Master. The catalog reads "Optional ..."
-# as an optional slot and shows the text to the model as a hint.
-PROMPTS = {
-    "subheadline": "Optional Subheadline",
-    "source": "Optional: Sources and/or captions",
-    "cover_subtitle": "Presenter, Place, Date",
-    "separation_subtitle": "Optional Subtext",
-    "end_title": "Thank you",
-    "end_subtitle": "Optional text",
-}
+# Colours of the Master: navy and blues from its theme, greens and teals from its cover.
+NAVY, PERIWINKLE, PALE = "003282", "6673B8", "BAC6E7"
+GREEN, TEAL, MIST = "00966D", "2EA19C", "BDE0E2"
+LIGHT_GREEN, PALE_GREEN, GRID = "4DB88E", "A8DCC6", "E9EEF7"
 
 
 def build_template(team: str) -> Path:
-    design = DESIGNS[team]
-    prs = Presentation()
-    prs.slide_width, prs.slide_height = Inches(W), Inches(H)
-    set_theme(prs, design)
-    style_master(prs, design)
-    by_source = {source: (name, roles) for name, (source, roles) in LAYOUTS.items()}
-    for layout in list(prs.slide_layouts):
-        if layout.name not in by_source:
-            prs.slide_layouts.remove(layout)
-            continue
-        name, roles = by_source[layout.name]
-        layout.element.cSld.set("name", name)
-        build_layout(layout, roles, design)
-    TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+    accent, bullet, decorate = TEAMS[team]
+    prs = Presentation(MASTER)
+    remove_sample_slides(prs)
+    set_accent(prs, accent)
+    set_bullets(prs, bullet, accent)
+    decorate(prs.slide_master)
     path = TEMPLATE_DIR / f"{team}.pptx"
     prs.save(path)
     return path
 
 
-def set_theme(prs: Presentation, design: Design) -> None:
-    """Write the palette and font into the theme, so PowerPoint, charts and tables use them."""
+def remove_sample_slides(prs: Presentation) -> None:
+    """A template holds layouts, not slides."""
+    for slide_id in list(prs.slides._sldIdLst):
+        prs.part.drop_rel(slide_id.rId)
+        prs.slides._sldIdLst.remove(slide_id)
+
+
+def set_accent(prs: Presentation, color: str) -> None:
+    """Theme accent 2 = team colour. Accent 1 stays the Master's navy, used by its titles."""
     part = prs.slide_master.part.part_related_by(RT.THEME)
     theme = etree.fromstring(part.blob)
-    if design.dark:  # dk1 is the background, lt1 the text (see the colour map below)
-        base = {"dk1": DEEP, "lt1": WHITE, "dk2": PANEL, "lt2": PALE}
-    else:
-        base = {"dk1": TEXT, "lt1": WHITE, "dk2": NAVY, "lt2": PALE}
-    accents = {f"accent{i}": color for i, color in enumerate(design.accents, start=1)}
-    colors = base | accents | {"hlink": design.accents[0], "folHlink": design.accents[2]}
-    scheme = theme.find(".//" + qn("a:clrScheme"))
-    scheme.set("name", "R. STAHL")
-    for slot, value in colors.items():
-        element = scheme.find(qn(f"a:{slot}"))
-        element.clear()
-        etree.SubElement(element, qn("a:srgbClr"), val=value)
-    for kind in ("a:majorFont", "a:minorFont"):
-        theme.find(f".//{qn(kind)}/{qn('a:latin')}").set("typeface", FONT)
+    slot = theme.find(f".//{qn('a:clrScheme')}/{qn('a:accent2')}")
+    slot.clear()
+    etree.SubElement(slot, qn("a:srgbClr"), val=color)
     # The theme is a plain binary part in python-pptx, so we replace its bytes.
     part._blob = etree.tostring(theme, xml_declaration=True, encoding="UTF-8", standalone=True)
-    if design.dark:  # text = light theme colour, background = dark theme colour
-        prs.slide_master.element.find(qn("p:clrMap")).attrib.update(
-            {"bg1": "dk1", "tx1": "lt1", "bg2": "dk2", "tx2": "lt2"}
-        )
 
 
-def style_master(prs: Presentation, design: Design) -> None:
-    master = prs.slide_master
-    old = master.element.find(qn("p:txStyles"))
-    old.getparent().replace(old, parse_xml(text_styles(design)))
-    remove_placeholders(master, keep=lambda ph: ph.placeholder_format.type not in FOOTER_TYPES)
-    for ph in master.placeholders:
-        is_title = ph.placeholder_format.type == PP_PLACEHOLDER.TITLE
-        place(ph, GRID["title" if is_title else "body"][0])
-    design.master(master)
+def set_bullets(prs: Presentation, char: str, color: str) -> None:
+    """Give the content boxes a team bullet; the Master's body text has none.
+
+    Only the content boxes ("object" placeholders) get it. Subtitles, subheadlines and source
+    lines are body placeholders and stay as they are.
+    """
+    for layout in prs.slide_layouts:
+        for ph in layout.placeholders:
+            if ph.placeholder_format.type == PP_PLACEHOLDER.OBJECT:
+                add_bullet(ph.element.txBody, char, color)
 
 
-def build_layout(layout, roles: dict[int, str], design: Design) -> None:
-    """Keep, add and position the placeholders of one layout, then draw its decoration."""
-    remove_placeholders(layout, keep=lambda ph: ph.placeholder_format.idx in roles)
-    existing = {ph.placeholder_format.idx for ph in layout.placeholders}
-    for idx in roles:
-        if idx not in existing:
-            add_placeholder(layout, idx)
-    for ph in layout.placeholders:
-        role = roles[ph.placeholder_format.idx]
-        place_role(ph, role, design)
-        if role in PROMPTS:
-            ph.text_frame.text = PROMPTS[role]
-    decoration = {"Title Slide": design.cover, "Separation Slide": design.separation,
-                  "End Slide": design.end}.get(layout.name)  # fmt: skip
-    if decoration:
-        decoration(layout)
-
-
-def place_role(ph, role: str, design: Design) -> None:
-    """Put a placeholder at the Master's position for its role, with the Master's font size."""
-    if role in ("title", "body"):
-        return place(ph, GRID[role][0])  # styled by the master text styles
-    if role.startswith("col"):
-        lefts, width = (COLUMNS_2, 5.71) if role.startswith("col2") else (COLUMNS_3, 3.65)
-        _, y, _, h = GRID["body"][0]
-        return place(ph, (lefts[int(role[-1])], y, width, h))
-    if role == "chart":
-        place(ph, CHART_BOX)
-        return retype(ph, "chart")
-    if role == "table":
-        _, y, _, h = GRID["body"][0]
-        place(ph, (0.72, y, 11.89, h))
-        return retype(ph, "tbl")
-    box, size = GRID[role]
-    colors = {
-        "subheadline": design.sub_color, "source": None,
-        "cover_title": design.cover_text[0], "cover_subtitle": design.cover_text[1],
-        "separation_title": design.separation_text[0],
-        "separation_subtitle": design.separation_text[1],
-        "end_title": design.end_text[0], "end_subtitle": design.end_text[1],
-    }  # fmt: skip
-    if role == "end_subtitle":
-        retype(ph, "body")  # its default source holds vertical text
-    bold = role in ("cover_title", "separation_title", "end_title", "end_subtitle")
-    anchor = BOTTOM if role == "source" else TOP
-    place(ph, box, anchor, size=size, bold=bold, color=colors[role], bullets=False,
-          caps=role == "end_subtitle")  # fmt: skip
-
-
-def add_placeholder(layout, idx: int) -> None:
-    """python-pptx cannot add placeholders, so we copy the master's body placeholder."""
-    master_body = next(
-        ph for ph in layout.slide_master.placeholders
-        if ph.placeholder_format.type == PP_PLACEHOLDER.BODY
-    )  # fmt: skip
-    sp = deepcopy(master_body.element)
-    sp.find(f"{qn('p:nvSpPr')}/{qn('p:nvPr')}/{qn('p:ph')}").set("idx", str(idx))
-    c_nv_pr = sp.find(f"{qn('p:nvSpPr')}/{qn('p:cNvPr')}")
-    c_nv_pr.set("id", str(max(int(e.get("id")) for e in layout.element.iter(qn("p:cNvPr"))) + 1))
-    c_nv_pr.set("name", f"Text Placeholder {idx}")
-    layout.element.cSld.spTree.append(sp)
-
-
-def retype(ph, kind: str) -> None:
-    """Change a placeholder's type, e.g. a content box into a chart or table placeholder."""
-    ph_element = ph.element.find(f"{qn('p:nvSpPr')}/{qn('p:nvPr')}/{qn('p:ph')}")
-    ph_element.set("type", kind)
-    ph_element.attrib.pop("orient", None)  # some default sources hold vertical text
-    if ph.element.txBody is not None:
-        ph.element.txBody.find(qn("a:bodyPr")).attrib.pop("vert", None)
-
-
-FOOTER_TYPES = {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLIDE_NUMBER}
-
-
-def remove_placeholders(owner, keep) -> None:
-    for ph in list(owner.placeholders):
-        if not keep(ph):
-            ph.element.getparent().remove(ph.element)
-
-
-def text_styles(design: Design) -> str:
-    """Master text styles as in the company Master: bold uppercase titles, body 20 pt."""
-    title_size, body_size = GRID["title"][1] * 100, GRID["body"][1] * 100
-    if design.bullet:
-        bullet = (
-            '<a:buClr><a:schemeClr val="accent1"/></a:buClr><a:buFont typeface="Arial"/>'
-            f'<a:buChar char="{design.bullet}"/>'
-        )
-        indent = 'marL="285750" indent="-285750"'
-    else:
-        bullet, indent = "<a:buNone/>", 'marL="0" indent="0"'
-    return (
-        f"<p:txStyles {nsdecls('a', 'p')}>"
-        '<p:titleStyle><a:lvl1pPr algn="l"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc>'
-        f'<a:defRPr sz="{title_size}" b="1" cap="all"><a:solidFill>'
-        f'<a:srgbClr val="{design.title_color}"/></a:solidFill><a:latin typeface="+mj-lt"/>'
-        "</a:defRPr></a:lvl1pPr></p:titleStyle>"
-        f"<p:bodyStyle><a:lvl1pPr {indent}>"
-        '<a:lnSpc><a:spcPct val="100000"/></a:lnSpc><a:spcBef><a:spcPts val="800"/></a:spcBef>'
-        f'{bullet}<a:defRPr sz="{body_size}"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'
-        '<a:latin typeface="+mn-lt"/></a:defRPr></a:lvl1pPr></p:bodyStyle>'
-        '<p:otherStyle><a:lvl1pPr><a:defRPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'
-        '<a:latin typeface="+mn-lt"/></a:defRPr></a:lvl1pPr></p:otherStyle>'
-        "</p:txStyles>"
+def add_bullet(tx_body, char: str, color: str) -> None:
+    lst_style = tx_body.find(qn("a:lstStyle"))
+    level = lst_style.find(qn("a:lvl1pPr"))
+    if level is None:
+        level = parse_xml(f"<a:lvl1pPr {nsdecls('a')}><a:defRPr/></a:lvl1pPr>")
+        lst_style.insert(0, level)
+    level.set("marL", "228600")  # 0.25 in: room for the bullet
+    level.set("indent", "-228600")
+    for tag in ("a:buClr", "a:buFont", "a:buNone", "a:buChar"):
+        for old in level.findall(qn(tag)):
+            level.remove(old)
+    bullet = parse_xml(
+        f'<a:x {nsdecls("a")}><a:buClr><a:srgbClr val="{color}"/></a:buClr>'
+        f'<a:buFont typeface="Arial"/><a:buChar char="{char}"/></a:x>'
     )
+    anchor = level.find(qn("a:defRPr"))  # bullet elements must come before defRPr
+    for element in list(bullet):
+        anchor.addprevious(element)
+
+
+# ---------------------------------------------------------------- drawing helpers
+
+# python-pptx can only add shapes to slides, so for the slide master we create the shape
+# element with python-pptx's own constructor. We insert it at the back of the shape tree,
+# so the Master's footer, date, slide number and logo stay on top.
+
+
+def _add(master, sp) -> Shape:
+    master.element.cSld.spTree.insert(2, sp)  # after the tree's two property elements
+    return Shape(sp, master.shapes)
+
+
+def _next_id(master) -> int:
+    return max(int(e.get("id")) for e in master.element.iter(qn("p:cNvPr"))) + 1
+
+
+def shape(master, box, color: str, kind: str = "rect") -> None:
+    """A filled rectangle or ellipse with no outline and no shadow."""
+    x, y, w, h = (Inches(v) for v in box)
+    sp = CT_Shape.new_autoshape_sp(_next_id(master), "Decoration", kind, x, y, w, h)
+    sp.remove(sp.find(qn("p:style")))  # the default shape style adds a drop shadow
+    deco = _add(master, sp)
+    deco.fill.solid()
+    deco.fill.fore_color.rgb = RGBColor.from_string(color)
+    deco.line.fill.background()
+
+
+def label(master, box, value: str, color: str) -> None:
+    x, y, w, h = (Inches(v) for v in box)
+    frame = _add(master, CT_Shape.new_textbox_sp(_next_id(master), "Label", x, y, w, h)).text_frame
+    frame.paragraphs[0].alignment = PP_ALIGN.RIGHT
+    run = frame.paragraphs[0].add_run()
+    run.text = value
+    run.font.size, run.font.bold = Pt(10), True
+    run.font.color.rgb = RGBColor.from_string(color)
+
+
+# ---------------------------------------------------------------- the three teams
+# Free areas of the Master's content slides: above the title (y < 0.7 in), the left margin
+# (x < 0.65 in) and the right margin (x > 12.65 in). Text boxes never overlap these.
+
+
+def marketing(master) -> None:
+    shape(master, (11.6, -1.75, 2.4, 2.4), MIST, "ellipse")  # top right, above the title
+    shape(master, (12.78, 0.8, 0.36, 0.36), TEAL, "ellipse")  # right margin
+    shape(master, (12.88, 1.35, 0.16, 0.16), NAVY, "ellipse")
+
+
+def engineering(master) -> None:
+    for i in range(1, 27):  # faint blueprint grid behind the slide
+        shape(master, (i * 0.5, 0, 0.01, H), GRID)
+    for i in range(1, 15):
+        shape(master, (0, i * 0.5, W, 0.01), GRID)
+    shape(master, (0.3, 0.3, 0.5, 0.04), PERIWINKLE)  # corner bracket in the top-left margin
+    shape(master, (0.3, 0.3, 0.04, 0.5), PERIWINKLE)
+    label(master, (9.6, 0.22, 3.0, 0.35), "ENGINEERING", PERIWINKLE)
+
+
+def finance(master) -> None:
+    shape(master, (0, 0, 0.3, H), NAVY)  # side rail in the left margin
+    heights, colors = [0.2, 0.32, 0.44, 0.56], [PALE_GREEN, LIGHT_GREEN, GREEN, NAVY]
+    for i, (height, color) in enumerate(zip(heights, colors, strict=True)):  # above the title
+        shape(master, (11.6 + i * 0.25, 0.68 - height, 0.16, height), color)
+
+
+# team -> (team colour, bullet character, decoration)
+TEAMS = {
+    "marketing": (TEAL, "●", marketing),
+    "engineering": (PERIWINKLE, "►", engineering),
+    "finance": (GREEN, "▪", finance),
+}
 
 
 def main() -> None:
-    for team in DESIGNS:
+    for team in TEAMS:
         print(build_template(team))
 
 

@@ -9,7 +9,14 @@ Prompt injection is handled in two layers:
 
 import re
 
-from slidegen.schema import MAX_SLIDES
+from slidegen.schema import (
+    MAX_CATEGORIES,
+    MAX_CELL,
+    MAX_COLUMNS,
+    MAX_ROWS,
+    MAX_SERIES,
+    MAX_SLIDES,
+)
 from slidegen.template import Catalog
 
 SYSTEM_PROMPT = """\
@@ -34,8 +41,11 @@ Rules:
 - When the notes compare several options on several figures, show them in a table (it takes
   the place of the layout's first bullet box, so leave "body" empty). When one figure is
   compared across items, or for percentages and shares, use a bar chart on a layout that has
-  a chart. Use only numbers that appear in the notes; never calculate new ones. Leave "table"
-  and "chart" empty when not used.
+  a chart. Leave "table" and "chart" empty when not used.
+- Tables: at most {max_rows} rows and {max_columns} columns, every cell at most {max_cell}
+  characters. Charts: at most {max_categories} categories and {max_series} series.
+- In tables and charts, copy every number exactly as it is written in the notes. Never
+  calculate, round or estimate a number; leave out a value the notes do not give.
 - Fill every slot of the chosen layout. Optional slots ("?") may stay empty; leave them empty
   rather than invent content (no made-up presenter, date or source). Slots the layout does
   not have stay empty ("" or []).
@@ -59,7 +69,11 @@ MAX_ECHO_CHARS = 8000  # cap on how much of a broken answer we send back in the 
 
 
 def system_prompt(catalog: Catalog) -> str:
-    return SYSTEM_PROMPT.format(catalog=catalog.prompt(), max_slides=MAX_SLIDES)
+    return SYSTEM_PROMPT.format(
+        catalog=catalog.prompt(), max_slides=MAX_SLIDES, max_rows=MAX_ROWS,
+        max_columns=MAX_COLUMNS, max_cell=MAX_CELL, max_categories=MAX_CATEGORIES,
+        max_series=MAX_SERIES,
+    )  # fmt: skip
 
 
 def wrap_notes(notes: str) -> str:

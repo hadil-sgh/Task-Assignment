@@ -26,18 +26,23 @@ or logged.
 
 ## Templates
 
-The company template was not provided, so the repository ships its own, styled after the
-R. STAHL website: navy `#072A5B`, light blue `#D3E5F7`, orange highlight `#EB7D00`, and Arial
-as a stand-in for the licensed Univers typeface (the website itself falls back to Arial).
+**The company template is the default.** Put it at `slidegen/templates/company/Master.pptx`
+(the folder is gitignored, because the template is not ours to publish) or pass any file with
+`--template`. The code reads its layouts directly; nothing in the code is specific to it.
 
-`slidegen/templates/` holds a base template and three team variants, each with its own look:
+`slidegen/templates/` also holds four team templates, built before the company template
+arrived and since re-themed after it (its navy `#003282`, the green-to-teal of its cover,
+Arial Narrow with uppercase titles, a small "© R. STAHL" footer). Each keeps its own look:
 
 | Template | Look |
 |---|---|
-| base | corporate: navy header band, brand-colour mosaic title slide, navy quote-style key message |
-| marketing | bold: raspberry and orange, overlapping circles |
-| engineering | technical, dark: blueprint grid, teal corner brackets |
-| finance | light, data-driven: navy side rail, bar-chart motifs, green accents |
+| base | corporate: navy header band, green-to-teal mosaic cover, navy quote-style key message |
+| marketing | bold: navy cover with teal, green and periwinkle circles |
+| engineering | technical, dark: blueprint grid, corner brackets |
+| finance | light, data-driven: navy side rail, green bar-chart motifs |
+
+Use them with `--team base|marketing|engineering|finance`, or `--team auto` to pick one from
+the content of the notes. Without the company template installed, `auto` is the default.
 
 All four share the same eight layouts and placeholder indexes (Title Slide, Title and Content,
 Key Message, Two Content, Comparison, Title Only, Chart and Text, Table), so the code never
@@ -61,28 +66,33 @@ what a PowerPoint user will see (Windows only, development use; the tool itself 
 
 `slidegen/template.py` reads the template once with python-pptx and keeps only the text
 layouts (no picture, chart or table placeholders). For each placeholder it computes a
-character budget from the box size, inner margins, indent, line spacing and the font size the
-template sets, and turns the result into a catalog of about 100 tokens:
+character budget from the box size, inner margins, indent, line spacing and the font the
+template sets (size, bold, narrow, uppercase), and turns the result into a short catalog.
+For the company template (35 layouts, of which 7 distinct text layouts are kept):
 
 ```
-L0 Title Slide: title<=80, subtitle<=92
-L1 Title and Content: title<=104, body<=10x83
-L2 Key Message: title<=148, body<=2x74
-L3 Two Content: title<=104, body<=10x38, body2<=10x38
-L4 Comparison: title<=104, head<=33, body<=8x38, head2<=33, body2<=8x38
-L5 Title Only: title<=104
+L0 9_Title slide refinery: title<=42, subtitle?<=100 "Presenter, Place, Date"
+L1 Titel und Inhalt: title<=51, head?<=120 "Optional Subheadline", body<=11x85, head2?<=171 "Optional: Sources and/or captions"
+L2 Title and 2 Columns: title<=51, head?<=120 "Optional Subheadline", body<=11x48, head2?<=171 "Optional: Sources and/or captions", body2<=11x48
+...
+L15 Separation Slide: title<=22, subtitle?<=85 "Optional Subtext"
 ```
 
-`body<=10x83` means up to 10 bullets of 83 characters. The model never sees template XML.
-The catalog is cached as `<template>.catalog.json`, keyed by a hash of the template file, so it
-rebuilds automatically when the template changes. Any .pptx works, including one we never
-designed for.
+- `body<=11x85` means up to 11 bullets of 85 characters.
+- `?` marks an optional slot. A slot is optional when the template's own prompt text says
+  "Optional ...", or when it is a one-line subtitle. The model never has to invent a source
+  line or a presenter name.
+- The quoted hint is the template's prompt text, so the model knows what each box is for.
+- Layouts with identical slots (the template's white and blue variants) are listed once.
 
-**Which team template?** Chosen from the content of the notes: a short word list per team
-(English, French, German), plus money and percentage figures counting towards finance. The
-neutral base template is used when the signal is weak or tied, and `--team` overrides the
-choice. A keyword score costs no tokens, gives the same answer every time and is easy to test.
-A wrong pick is harmless: every team template has the same layouts, so only the colours change.
+The model never sees template XML. The catalog is cached as `<template>.catalog.json`, keyed
+by a hash of the template file, so it rebuilds automatically when the template changes.
+
+**Which team template (`--team auto`)?** Chosen from the content of the notes: a short word
+list per team (English, French, German), plus money and percentage figures counting towards
+finance. The base template is used when the signal is weak or tied. A keyword score costs no
+tokens, gives the same answer every time and is easy to test. A wrong pick is harmless: every
+team template has the same layouts, so only the look changes.
 
 ## Structured output and validation
 

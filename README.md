@@ -13,6 +13,34 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 uv sync
 ```
 
+## Usage
+
+```bash
+uv run python -m slidegen "rough notes..." --out deck.pptx
+cat notes.txt | uv run python -m slidegen --verbose        # notes from stdin
+uv run python -m slidegen "notes" --team auto              # team template picked from the notes
+uv run python -m slidegen "notes" --mock repair --verbose  # no key, no network
+```
+
+| Option | Meaning |
+|---|---|
+| `--out` | output file (default `deck.pptx`) |
+| `--model` | OpenRouter model id |
+| `--team` | `base` (the company Master), `marketing`, `engineering`, `finance`, or `auto` |
+| `--template` | any other .pptx template |
+| `--verbose` | outcome, tokens, cost and latency per call, warnings |
+| `--mock` | canned answers: `ok`, `repair` (bad first answer) or `fallback` (only bad answers) |
+
+Exit codes: 0 deck written and checked, 1 deck written but the check found problems,
+2 empty notes or bad arguments, 3 API key missing or rejected.
+
+**One run** (`slidegen/pipeline.py`): pick the template and load its cached catalog, make one
+structured model call, validate it; if it is invalid, make one repair call with the error
+list (never a loop); if that fails too or the API cannot be reached, build a plain deck from
+the notes (each line becomes text, at most 4 slides, nothing dropped). Then build the deck
+and check the saved file. At most two model calls per run, no agent loop, no code generation.
+A missing or rejected key is not hidden by the fallback: it stops with a clear message.
+
 ## API key
 
 The tool reads `OPENROUTER_API_KEY` from the environment or from a local `.env` file:

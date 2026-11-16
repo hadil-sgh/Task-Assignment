@@ -145,3 +145,12 @@ def test_fallback_title_is_the_first_sentence(catalog: Catalog) -> None:
     [slide] = fallback_deck(notes, catalog).slides
     assert slide.slots["title"] == "Website relaunch: which framework?"
     assert slide.slots["body"] == ["Current site is 9 years old.", "4.8 s mobile load"]
+
+
+def test_the_reason_for_a_repair_is_reported(tmp_path: Path) -> None:
+    result, _ = run(tmp_path, deck_with(layout="L99"), GOOD)
+    assert result.outcome == "repaired"
+    assert [w for w in result.warnings if w.startswith("first answer rejected:")] == [
+        "first answer rejected: slides[0].layout: unknown layout 'L99'; "
+        "use one of L0, L1, L2, L3, L4, L8, L9, L15, L34"
+    ]

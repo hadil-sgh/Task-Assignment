@@ -45,3 +45,10 @@ def test_repair_messages_carry_answer_errors_and_notes(catalog: Catalog) -> None
 def test_huge_broken_answer_is_capped(catalog: Catalog) -> None:
     messages = repair_messages("notes", catalog, "x" * 50_000, ["response: no JSON object found"])
     assert len(messages[2]["content"]) == 8000
+
+
+def test_table_and_chart_limits_are_in_the_system_prompt(catalog: Catalog) -> None:
+    prompt = system_prompt(catalog)
+    assert "at most 8 rows and 6 columns, every cell at most 40" in prompt
+    assert "at most 8 categories and 3 series" in prompt
+    assert "copy every number exactly as it is written in the notes" in prompt

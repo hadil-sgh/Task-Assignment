@@ -21,10 +21,10 @@ NOTES = (
 CHART_SLIDE = {
     "layout": "L8",
     "title": "Next.js is fast enough and fits the team",
-    "head": "",
+    "subtitle": "",
     "body": ["Fits the React skills of the team", "Astro is faster but needs React too"],
-    "head2": "",
-    "head3": "Mobile load time in seconds",
+    "head": "",
+    "head2": "Mobile load time in seconds",
     "chart": {
         "title": "Load time (s)",
         "categories": ["Next.js", "Nuxt", "Astro"],
@@ -34,9 +34,9 @@ CHART_SLIDE = {
 TABLE_SLIDE = {
     "layout": "L1",
     "title": "Three options compared",
-    "head": "",
+    "subtitle": "",
     "body": [],
-    "head2": "",
+    "head": "",
     "table": {
         "columns": ["Option", "Load (s)", "Cost (EUR k)", "Weeks"],
         "rows": [["Next.js", "1.1", "150", "18"], ["Nuxt", "1.3", "165", "21"],
@@ -69,7 +69,7 @@ def errors_of(text: str, catalog: Catalog) -> list[str]:
 
 def test_catalog_offers_the_masters_chart_layout(catalog: Catalog) -> None:
     diagram = catalog.layout("L8")
-    assert [s.name for s in diagram.slots][-2:] == ["head3", "chart"]
+    assert [s.name for s in diagram.slots][-2:] == ["head2", "chart"]
     assert diagram.slots[-1].describe() == "chart"
     assert "L10" not in [layout.id for layout in catalog.layouts]  # two charts: left out
 

@@ -61,17 +61,24 @@ def test_layout_ids_point_at_the_template_layout_index(master_copy: Path) -> Non
 
 
 def test_slots_are_named_by_role_and_position(master_copy: Path) -> None:
-    """Title first, then boxes top to bottom and left to right; one-line boxes are heads."""
+    """Title, the subtitle under it, then the rest left to right; one-line boxes are heads."""
     catalog = build_catalog(master_copy)
     columns = next(lay for lay in catalog.layouts if lay.name == "Title and 3 Columns")
-    assert [s.name for s in columns.slots] == ["title", "head", "body", "head2", "body2", "body3"]
+    assert [s.name for s in columns.slots] == [
+        "title",
+        "subtitle",
+        "body",
+        "head",
+        "body2",
+        "body3",
+    ]
     assert [s.kind for s in columns.slots] == ["text", "text", "list", "text", "list", "list"]
 
 
 def test_subheadline_and_source_are_optional_with_hints(master_copy: Path) -> None:
     catalog = build_catalog(master_copy)
-    subheadline = slot(catalog, "Titel und Inhalt", "head")
-    source = slot(catalog, "Titel und Inhalt", "head2")
+    subheadline = slot(catalog, "Titel und Inhalt", "subtitle")
+    source = slot(catalog, "Titel und Inhalt", "head")
     assert subheadline.optional and subheadline.hint == "Optional Subheadline"
     assert source.optional and source.hint == "Optional: Sources and/or captions"
     assert not slot(catalog, "Titel und Inhalt", "body").optional

@@ -29,7 +29,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 # without it, the team templates are used.
 COMPANY_TEMPLATE = TEMPLATE_DIR / "company" / "Master.pptx"
 DEFAULT_TEAM = "base"
-CATALOG_VERSION = 2  # bump when the budget rules change, so old caches are rebuilt
+CATALOG_VERSION = 3  # bump when the budget rules change, so old caches are rebuilt
 
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 TEXT_TYPES = TITLE_TYPES | {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
@@ -40,7 +40,7 @@ IGNORED_TYPES = {PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.SLID
 # later measures the real text with the real font.
 CHAR_EM = {"regular": 0.5, "bold": 0.53, "narrow": 0.41, "narrow bold": 0.44}
 CAPS_FACTOR = 1.2  # ALL CAPS text is about 20% wider than mixed case
-LINE_HEIGHT = 1.2  # line height as a multiple of the font size at 100% line spacing
+LINE_HEIGHT = 1.12  # Arial family: ascent + descent = 1.12 x font size at 100% spacing
 GENERIC_PROMPTS = ("click to edit", "master")  # template boilerplate, not a useful hint
 
 

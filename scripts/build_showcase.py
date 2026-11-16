@@ -1,9 +1,9 @@
-"""Fill every template with one demo slide per layout, including a native chart and table.
+"""Fill every template with demo slides, including a native chart and table.
 
 Only used to look at the templates (render with scripts/render.py); not part of the tool.
 
 Run:  uv run python scripts/build_showcase.py
-Writes out/showcase/<team>.pptx
+Writes out/showcase/<template>.pptx
 """
 
 from pathlib import Path
@@ -11,7 +11,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
-from pptx.util import Pt
+from pptx.util import Inches, Pt
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = ROOT / "slidegen" / "templates"
@@ -19,44 +19,39 @@ SHOWCASE_DIR = ROOT / "out" / "showcase"
 
 CHART, TABLE = "<chart>", "<table>"
 
-# Layout name -> {placeholder index: text}. Indexes 13 and 22 are subheadline and source.
-SLIDES = {
-    "Title Slide": {
-        0: "Ex-Lighting Upgrade 2026",
-        1: "Plant management update\nTunis, 17 November 2026",
-    },
-    "Title and Content": {
+# (layout index in the Master, {placeholder index: text}). In the Master's content layouts,
+# 0 is the title, 13 the subheadline, 18/26/27 the body columns and 22 the source line.
+SLIDES = [
+    (0, {0: "Ex-Lighting Upgrade 2026", 10: "Plant management update\nTunis, 17 November 2026"}),
+    (1, {
         0: "Phase 1 finished on time and 4% under budget",
         13: "Zone 1 rollout at Weil and Tunis",
-        1: "312 luminaires replaced in Zone 1 areas\nEnergy use down 33% versus legacy fittings\n"
+        18: "312 luminaires replaced in Zone 1 areas\nEnergy use down 33% versus legacy fittings\n"
         "No unplanned downtime during installation\nCertification audit passed on 3 November",
         22: "Source: plant energy reports, October 2026",
-    },
-    "Title and 2 Columns": {
+    }),
+    (2, {
         0: "Retrofit pays back faster than full replacement",
         13: "Two options for phase 2",
-        1: "Retrofit\nEUR 410k total cost\nPayback in 2.1 years\nInstalled in 6 weeks",
-        2: "Full replacement\nEUR 690k total cost\nPayback in 3.4 years\nInstalled in 11 weeks",
-    },
-    "Title and 3 Columns": {
+        18: "Retrofit\nEUR 410k total cost\nPayback in 2.1 years\nInstalled in 6 weeks",
+        26: "Full replacement\nEUR 690k total cost\nPayback in 3.4 years\nInstalled in 11 weeks",
+    }),
+    (3, {
         0: "Three sites, three different bottlenecks",
-        2: "Weil\nSupplier lead time 14 weeks\nSpare parts for 6 months",
-        3: "Tunis\nInstallers booked until March\nPermits pending for Hall 3",
-        4: "Cologne\nShutdown window in July\nTraining in December",
-    },
-    "Title, Text and Chart": {
+        18: "Weil\nSupplier lead time 14 weeks\nSpare parts for 6 months",
+        26: "Tunis\nInstallers booked until March\nPermits pending for Hall 3",
+        27: "Cologne\nShutdown window in July\nTraining in December",
+    }),
+    (8, {
         0: "Every site cut energy use by at least a quarter",
         13: "Energy use per site, MWh",
-        2: "Weil: −38%\nTunis: −32%\nCologne: −31%\nHouston: −27%",
-        1: CHART,
-    },
-    "Title and Table": {0: "Three of four sites are finished", 1: TABLE},
-    "Separation Slide": {
-        0: "Approve phase 2 by 1 December",
-        1: "Installation can then start in January",
-    },
-    "End Slide": {0: "Thank you", 1: "Questions?"},
-}  # fmt: skip
+        18: "Weil: −38%\nTunis: −32%\nCologne: −31%\nHouston: −27%",
+        28: CHART,
+    }),
+    (4, {0: "Three of four sites are finished", 13: "Status per site", TABLE: TABLE}),
+    (15, {0: "Approve phase 2 by 1 December", 12: "Installation can then start in January"}),
+    (34, {0: "Thank you", 10: "Questions?"}),
+]  # fmt: skip
 
 TABLE_ROWS = [
     ["Site", "Luminaires", "Energy saved", "Status"],
@@ -83,30 +78,35 @@ def add_chart(placeholder) -> None:
     plot.data_labels.font.size = Pt(11)
 
 
-def add_table(placeholder) -> None:
-    table = placeholder.insert_table(len(TABLE_ROWS), len(TABLE_ROWS[0])).table
+def add_table(slide) -> None:
+    """The Master has no table layout, so the table goes where the body text would be."""
+    shape = slide.shapes.add_table(
+        len(TABLE_ROWS), len(TABLE_ROWS[0]), Inches(0.72), Inches(1.98), Inches(9.96), Inches(2)
+    )
     for r, row in enumerate(TABLE_ROWS):
         for c, value in enumerate(row):
-            cell = table.cell(r, c)
+            cell = shape.table.cell(r, c)
             cell.text = value
             cell.text_frame.paragraphs[0].runs[0].font.size = Pt(16)
 
 
 def build_showcase(template: Path) -> Path:
     prs = Presentation(template)
-    layouts = {layout.name: layout for layout in prs.slide_layouts}
-    for name, texts in SLIDES.items():
-        slide = prs.slides.add_slide(layouts[name])
+    for slide_id in list(prs.slides._sldIdLst):  # drop any sample slides
+        prs.part.drop_rel(slide_id.rId)
+        prs.slides._sldIdLst.remove(slide_id)
+    for layout_index, texts in SLIDES:
+        slide = prs.slides.add_slide(prs.slide_layouts[layout_index])
         for placeholder in list(slide.placeholders):
             value = texts.get(placeholder.placeholder_format.idx)
             if value == CHART:
                 add_chart(placeholder)
-            elif value == TABLE:
-                add_table(placeholder)
             elif value:
                 placeholder.text_frame.text = value
             else:
                 placeholder.element.getparent().remove(placeholder.element)  # unused box
+        if TABLE in texts:
+            add_table(slide)
     SHOWCASE_DIR.mkdir(parents=True, exist_ok=True)
     path = SHOWCASE_DIR / template.name
     prs.save(path)

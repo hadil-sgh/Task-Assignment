@@ -27,9 +27,11 @@ from pptx.oxml.ns import nsdecls, qn
 from pptx.util import Inches
 from template_designs import (
     BOTTOM,
+    DEEP,
     DESIGNS,
-    LIGHT_BLUE,
     NAVY,
+    PALE,
+    PANEL,
     TEXT,
     WHITE,
     Design,
@@ -39,7 +41,7 @@ from template_designs import (
 )
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "slidegen" / "templates"
-FONT = "Arial"  # R. STAHL uses the licensed Univers; its own website falls back to Arial
+FONT = "Arial Narrow"  # the font of the company Master template
 GAP = 0.4  # inches between columns
 
 # Default layout name -> our name. Every other default layout is removed.
@@ -80,9 +82,9 @@ def set_theme(prs: Presentation, design: Design) -> None:
     part = prs.slide_master.part.part_related_by(RT.THEME)
     theme = etree.fromstring(part.blob)
     if design.dark:  # dk1 is the background, lt1 the text (see the colour map below)
-        base = {"dk1": "0A1F3D", "lt1": WHITE, "dk2": "12345F", "lt2": "BFE9EE"}
+        base = {"dk1": DEEP, "lt1": WHITE, "dk2": PANEL, "lt2": PALE}
     else:
-        base = {"dk1": TEXT, "lt1": WHITE, "dk2": NAVY, "lt2": LIGHT_BLUE}
+        base = {"dk1": TEXT, "lt1": WHITE, "dk2": NAVY, "lt2": PALE}
     accents = {f"accent{i}": color for i, color in enumerate(design.accents, start=1)}
     colors = base | accents | {"hlink": design.accents[0], "folHlink": design.accents[2]}
     scheme = theme.find(".//" + qn("a:clrScheme"))
@@ -153,7 +155,7 @@ def set_placeholder_type(ph, kind: str) -> None:
 
 
 def text_styles(design: Design) -> str:
-    """Master text styles: bold titles in the team title colour, body 20 pt with team bullet."""
+    """Master text styles: bold uppercase titles (as in the company Master), body 20 pt."""
 
     def level(n: int, size: int, char: str, margin: int) -> str:
         return (
@@ -168,7 +170,7 @@ def text_styles(design: Design) -> str:
     return (
         f"<p:txStyles {nsdecls('a', 'p')}>"
         '<p:titleStyle><a:lvl1pPr algn="l"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc>'
-        f'<a:defRPr sz="3000" b="1"><a:solidFill><a:srgbClr val="{design.title_color}"/>'
+        f'<a:defRPr sz="3000" b="1" cap="all"><a:solidFill><a:srgbClr val="{design.title_color}"/>'
         '</a:solidFill><a:latin typeface="+mj-lt"/></a:defRPr></a:lvl1pPr></p:titleStyle>'
         f"<p:bodyStyle>{level(1, 2000, design.bullet, 285750)}"
         f"{level(2, 1800, '–', 742950)}</p:bodyStyle>"

@@ -19,7 +19,7 @@ import httpx
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 KEY_VAR = "OPENROUTER_API_KEY"
-DEFAULT_MODEL = "anthropic/claude-sonnet-4.5"  # confirmed against OpenRouter in the notebook
+DEFAULT_MODEL = "openai/gpt-5.6-terra"  # chosen by notebooks/evaluate.ipynb (see README)
 TIMEOUT_S = 60
 MAX_RETRIES = 3  # so at most 4 attempts, waiting 1 s, 2 s, 4 s in between
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}

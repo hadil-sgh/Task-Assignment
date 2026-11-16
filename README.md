@@ -57,6 +57,18 @@ or logged.
 `slidegen/llm.py` makes one call to OpenRouter's OpenAI-compatible endpoint with a strict JSON
 schema response format, and records tokens, cost (reported by OpenRouter) and latency.
 
+**Default model: `openai/gpt-5.6-terra`**, chosen with `notebooks/evaluate.ipynb` (8 notes x
+2 runs per model, decks scored blind by Claude Opus 5.5, twice):
+
+| Model | First try | Quality (1-5) | Cost per deck | Latency |
+|---|---|---|---|---|
+| GPT-5.6 Terra | 100% | 3.83 | $0.003 | 3.0 s |
+| Claude Sonnet 5.5 | 94% | 3.58 | $0.011 | 4.6 s |
+
+Qwen 3.8 Max could not be compared: its requests failed in this setup, so every Qwen run fell
+back to the plain deck. The judge's two scorings differed by 0.11 points on average. Any other
+OpenRouter model can be used with `--model`.
+
 - Timeouts, rate limits (429) and server errors (5xx) are retried up to 3 times, waiting
   1, 2 and 4 seconds, or what the server's `Retry-After` header asks for.
 - A rejected key (401/403) stops at once with a clear message; retrying cannot help.
@@ -115,16 +127,18 @@ For the company template (35 layouts, of which 7 distinct text layouts are kept)
 
 ```
 L0 9_Title slide refinery: title<=42, subtitle?<=100 "Presenter, Place, Date"
-L1 Titel und Inhalt: title<=51, head?<=120 "Optional Subheadline", body<=11x85, head2?<=171 "Optional: Sources and/or captions"
-L2 Title and 2 Columns: title<=51, head?<=120 "Optional Subheadline", body<=11x48, head2?<=171 "Optional: Sources and/or captions", body2<=11x48
+L1 Titel und Inhalt: title<=51, subtitle?<=120 "Optional Subheadline", body<=11x85, head?<=171 "Optional: Sources and/or captions"
+L2 Title and 2 Columns: title<=51, subtitle?<=120 "Optional Subheadline", body<=11x48, head?<=171 "Optional: Sources and/or captions", body2<=11x48
 ...
 L15 Separation Slide: title<=44, subtitle?<=85 "Optional Subtext"
 ```
 
 - `body<=11x85` means up to 11 bullets of 85 characters.
 - `?` marks an optional slot. A slot is optional when the template's own prompt text says
-  "Optional ...", or when it is a one-line subtitle. The model never has to invent a source
-  line or a presenter name.
+  "Optional ...", or when it is the subtitle. The model never has to invent a source line or a
+  presenter name.
+- The one-line box right under the title (as wide as the title) is called `subtitle` on every
+  layout, so the model uses one name for one thing.
 - The quoted hint is the template's prompt text, so the model knows what each box is for.
 - Layouts with identical slots (the template's white and blue variants) are listed once.
 

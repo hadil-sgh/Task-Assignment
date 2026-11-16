@@ -17,6 +17,12 @@ dev = [
     "pywin32>=312 ; sys_platform == 'win32'",
     "ruff>=0.6",
 ]
+eval = [
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
+    "nbconvert>=7.17.2",
+    "pandas>=3.1.1",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -28,7 +28,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 MASTER = TEMPLATE_DIR / "master.pptx"  # the company template: the default, and team "base"
 TEAMS = ["base", "engineering", "finance", "marketing"]  # the others are built from MASTER
 DEFAULT_TEAM = "base"
-CATALOG_VERSION = 5  # bump when the budget rules change, so old caches are rebuilt
+CATALOG_VERSION = 6  # bump when the budget rules change, so old caches are rebuilt
 
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 TEXT_TYPES = TITLE_TYPES | {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
@@ -278,13 +278,12 @@ def _insets(ph) -> tuple[float, float, float, float]:
 def _name_slots(slots: list[Slot], placeholders: list) -> list[Slot]:
     """Give slots stable, readable names: title, subtitle, then heads and bodies left to right.
 
-    A body box with room for one line only is a heading ("head"); larger ones hold bullets.
-    On a layout without bullet boxes, a one-line box is the subtitle. Subtitles are optional.
+    The subtitle is the one-line box right under the title and about as wide (the Master's
+    "Optional Subheadline"), so it has the same name on every layout. Subtitles are optional.
+    Other one-line boxes are headings ("head"); larger ones hold bullets ("body").
     """
     order = sorted(zip(slots, placeholders, strict=True), key=lambda sp: (sp[1].left, sp[1].top))
-    has_bullets = any(
-        slot.lines > 1 and ph.placeholder_format.type not in TITLE_TYPES for slot, ph in order
-    )
+    subtitle = _under_title(order)
     counts: dict[str, int] = {}
     for slot, ph in order:
         kind = ph.placeholder_format.type
@@ -292,7 +291,7 @@ def _name_slots(slots: list[Slot], placeholders: list) -> list[Slot]:
             base = "title"
         elif kind == PP_PLACEHOLDER.CHART:
             base = "chart"
-        elif kind == PP_PLACEHOLDER.SUBTITLE or (slot.lines == 1 and not has_bullets):
+        elif kind == PP_PLACEHOLDER.SUBTITLE or ph is subtitle:
             base, slot.optional = "subtitle", True
         elif slot.lines == 1:
             base = "head"
@@ -302,6 +301,19 @@ def _name_slots(slots: list[Slot], placeholders: list) -> list[Slot]:
         slot.name = base if counts[base] == 1 else f"{base}{counts[base]}"
     rank = {"title": 0, "subtitle": 1}
     return [s for s, _ in sorted(order, key=lambda sp: rank.get(sp[0].name, 2))]
+
+
+def _under_title(order: list):
+    """The one-line text box highest on the slide after the title, if it is about as wide."""
+    title = next((ph for _, ph in order if ph.placeholder_format.type in TITLE_TYPES), None)
+    others = [
+        (slot, ph) for slot, ph in order
+        if slot.kind == "text" and ph.placeholder_format.type not in TITLE_TYPES
+    ]  # fmt: skip
+    if title is None or not others:
+        return None
+    slot, ph = min(others, key=lambda sp: sp[1].top)
+    return ph if slot.lines == 1 and ph.width >= 0.8 * title.width else None
 
 
 # ---------------------------------------------------------------- choosing the team template

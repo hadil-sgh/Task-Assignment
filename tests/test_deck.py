@@ -19,9 +19,9 @@ DECK = {
         {
             "layout": "L1",
             "title": "Phase 1 finished on time and 4% under budget",
-            "head": "Zone 1 rollout at Weil and Tunis",
+            "subtitle": "Zone 1 rollout at Weil and Tunis",
             "body": ["312 luminaires replaced in Zone 1 areas", "No unplanned downtime"],
-            "head2": "",
+            "head": "",
         },
         {"layout": "L15", "title": "Approve phase 2 by 1 December", "subtitle": ""},
     ]
@@ -124,7 +124,7 @@ def test_check_finds_empty_boxes(tmp_path: Path, catalog: Catalog) -> None:
         ph for ph in prs.slides[1].placeholders if ph.placeholder_format.idx == 13
     ).text_frame.text = ""
     prs.save(out)
-    assert check_deck_file(out, catalog) == ["slide 2: 'head' is empty"]
+    assert check_deck_file(out, catalog) == ["slide 2: 'subtitle' is empty"]
 
 
 def test_check_finds_too_many_slides(tmp_path: Path, catalog: Catalog) -> None:

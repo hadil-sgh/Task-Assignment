@@ -26,40 +26,35 @@ or logged.
 
 ## Templates
 
-**The company template is the default.** Put it at `slidegen/templates/company/Master.pptx`
-(the folder is gitignored, because the template is not ours to publish) or pass any file with
-`--template`. The code reads its layouts directly; nothing in the code is specific to it.
+**The company Master is the default** (`slidegen/templates/master.pptx`). The code reads its
+layouts directly; nothing in the code is specific to it, and `--template` accepts any other
+.pptx.
 
-`slidegen/templates/` also holds four team templates built on **exactly the text grid of the
-company Master**: the same layouts, every text box at the Master's position and size, the
-Master's font sizes, Arial Narrow with uppercase titles, its navy `#003282` and the
-green-to-teal of its cover. Nothing is copied from the Master file itself (no logo, no
-images). `base` looks like the Master; the other teams change colours and add decorations
-only in the free areas around the text:
+The three team templates are **the Master itself, expanded**. `scripts/build_templates.py`
+copies `master.pptx` and changes only three things per team:
+
+1. a team colour (theme accent 2; accent 1 stays the Master's navy, used by its titles);
+2. bullet marks in that colour on the content boxes (the Master's body text has none);
+3. a few decorative shapes in the free margins of the content slides, drawn behind the
+   Master's own footer, date, slide number and logo.
+
+Everything else stays the Master's: its first and last slides, all its layouts, every text
+box and font, the optional subheadline and source line, the footer, date and slide number.
 
 | Template | Look |
 |---|---|
-| base | like the Master: white slides, navy uppercase titles, green-to-teal triangle cover |
-| marketing | teal, green and periwinkle circles in the corners, navy cover |
-| engineering | dark slides with a blueprint grid and corner brackets |
-| finance | navy side rail and green bar-chart motifs |
+| base (the Master) | the company template, unchanged |
+| marketing | teal bullets, circles in the top-right corner |
+| engineering | periwinkle arrow bullets, faint blueprint grid, corner bracket |
+| finance | green square bullets, navy side rail, small bar-chart motif |
 
-Use them with `--team base|marketing|engineering|finance`, or `--team auto` to pick one from
-the content of the notes. Without the company template installed, `auto` is the default.
-
-Layouts, as in the Master: Title Slide, Title and Content, Title and 2 Columns, Title and 3
-Columns, Title Only, Separation Slide, End Slide, plus Title, Text and Chart and Title and
-Table. All four teams share the same layouts and placeholder indexes, so the code never
-changes per team, and a test checks every text box against the Master's positions. The team
-colours sit in the theme accents, so native charts and tables pick them up automatically.
-
-python-pptx cannot create layouts from scratch, so `scripts/build_templates.py` starts from the
-python-pptx default template and reshapes its theme, master and layouts. The four looks live in
-`scripts/template_designs.py`.
+Choose with `--team base|marketing|engineering|finance`, or `--team auto` to pick one from the
+content of the notes. Because the layouts and placeholders are the Master's in every team,
+the generator works the same with all of them, and a wrong pick only changes the look.
 
 ```bash
-uv run python scripts/build_templates.py   # writes slidegen/templates/*.pptx
-uv run python scripts/build_showcase.py    # one demo slide per layout, with a chart and a table
+uv run python scripts/build_templates.py   # writes slidegen/templates/<team>.pptx
+uv run python scripts/build_showcase.py    # demo slides per template, with a chart and a table
 uv run python scripts/render.py out/showcase/*.pptx
 ```
 

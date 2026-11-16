@@ -5,9 +5,20 @@ from pathlib import Path
 
 import pytest
 from pptx import Presentation
+from pptx.oxml.ns import qn
+from pptx.util import Inches
 
 from slidegen import template
-from slidegen.template import TEMPLATE_DIR, build_catalog, load_catalog, pick_team, resolve_template
+from slidegen.template import (
+    TEMPLATE_DIR,
+    Layout,
+    Slot,
+    build_catalog,
+    dedupe,
+    load_catalog,
+    pick_team,
+    resolve_template,
+)
 
 TEAMS = ["base", "marketing", "engineering", "finance"]
 
@@ -51,7 +62,7 @@ def test_budgets_follow_box_size(base_copy: Path) -> None:
     full = layouts["Title and Content"].slots[1]
     half = layouts["Two Content"].slots[1]
     assert full.font_pt == 20
-    assert 60 <= full.chars <= 100 and 6 <= full.lines <= 12
+    assert 60 <= full.chars <= 120 and 6 <= full.lines <= 12
     assert half.chars < full.chars / 2 + 5  # a half-width column holds about half as much
 
 
@@ -78,6 +89,60 @@ def test_works_with_a_foreign_template(tmp_path: Path) -> None:
     assert "Picture with Caption" not in names  # has a picture placeholder
     assert "Blank" not in names  # has no text placeholder
     assert "Title and Vertical Text" not in names  # vertical text
+
+
+def set_prompt(path: Path, layout_index: int, idx: int, text: str) -> None:
+    """Write prompt text into a layout placeholder, like a template designer would."""
+    prs = Presentation(path)
+    layout = prs.slide_layouts[layout_index]
+    next(p for p in layout.placeholders if p.placeholder_format.idx == idx).text_frame.text = text
+    prs.save(path)
+
+
+def test_optional_prompt_text_makes_an_optional_slot_with_a_hint(base_copy: Path) -> None:
+    set_prompt(base_copy, 4, 3, "Optional: Sources and/or captions")  # Comparison, head2
+    head2 = next(s for s in build_catalog(base_copy).layout("L4").slots if s.name == "head2")
+    assert head2.optional
+    assert head2.describe().startswith("head2?<=")
+    assert head2.describe().endswith(' "Optional: Sources and/or captions"')
+
+
+def test_boilerplate_prompt_text_is_not_a_hint(base_copy: Path) -> None:
+    set_prompt(base_copy, 4, 3, "Click to edit Master text styles")
+    head2 = next(s for s in build_catalog(base_copy).layout("L4").slots if s.name == "head2")
+    assert head2.hint == "" and not head2.optional
+
+
+def test_one_line_box_without_bullets_is_an_optional_subtitle(base_copy: Path) -> None:
+    prs = Presentation(base_copy)
+    body = next(p for p in prs.slide_layouts[2].placeholders if p.placeholder_format.idx == 1)
+    body.height = Inches(0.45)  # Key Message: room for one line only
+    prs.save(base_copy)
+    names = [(s.name, s.optional) for s in build_catalog(base_copy).layout("L2").slots]
+    assert names == [("title", False), ("subtitle", True)]
+
+
+def test_identical_layouts_are_listed_once() -> None:
+    """A template with white and blue copies of a layout shows the model only the first."""
+    title = Slot("title", 0, "text", 1, 40, 30.0)
+    layouts = [
+        Layout("L1", "Title", [title]),
+        Layout("L7", "Blue_Title", [title]),
+        Layout("L8", "Big title", [Slot("title", 0, "text", 2, 40, 30.0)]),
+    ]
+    assert [layout.id for layout in dedupe(layouts)] == ["L1", "L8"]
+
+
+def test_narrow_font_fits_more_characters(base_copy: Path, tmp_path: Path) -> None:
+    """Our templates use Arial Narrow; the same box holds about 20% more than with Arial."""
+    narrow = build_catalog(base_copy).layout("L1").slots[1].chars
+    prs = Presentation(base_copy)
+    for latin in prs.slide_master.element.iter(qn("a:latin")):  # "+mn-lt" -> explicit Arial
+        latin.set("typeface", "Arial")
+    regular_path = tmp_path / "regular.pptx"
+    prs.save(regular_path)
+    regular = build_catalog(regular_path).layout("L1").slots[1].chars
+    assert narrow > regular * 1.15
 
 
 # ---------------------------------------------------------------- cache
@@ -131,12 +196,28 @@ def test_neutral_or_mixed_notes_use_base() -> None:
     assert pick_team("Campaign launch; prototype test") == "base"  # tie stays neutral
 
 
-def test_explicit_choices_win() -> None:
-    finance_notes = "revenue margin costs 12%"
-    assert resolve_template(finance_notes, team="marketing").stem == "marketing"
+FINANCE_NOTES = "revenue margin costs 12%"
+
+
+def test_company_template_is_the_default_when_installed(
+    base_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(template, "COMPANY_TEMPLATE", base_copy)
+    assert resolve_template(FINANCE_NOTES) == base_copy
+    assert resolve_template(FINANCE_NOTES, team="auto").stem == "finance"
+    assert resolve_template(FINANCE_NOTES, team="marketing").stem == "marketing"
+
+
+def test_without_company_template_the_team_is_picked_from_the_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(template, "COMPANY_TEMPLATE", tmp_path / "missing.pptx")
+    assert resolve_template(FINANCE_NOTES).stem == "finance"
+
+
+def test_explicit_template_file_wins() -> None:
     custom = Path("company.pptx")
-    assert resolve_template(finance_notes, team="marketing", template=custom) == custom
-    assert resolve_template(finance_notes).stem == "finance"
+    assert resolve_template(FINANCE_NOTES, team="marketing", template=custom) == custom
 
 
 def test_unknown_team_lists_the_choices() -> None:

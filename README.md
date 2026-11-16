@@ -36,10 +36,8 @@ Exit codes: 0 deck written and checked, 1 deck written but the check found probl
 
 **One run** (`slidegen/pipeline.py`): pick the template and load its cached catalog, make one
 structured model call, validate it; if it is invalid, make one repair call with the error
-list (never a loop). If after the repair only a table or chart is still wrong, those slides
-show their rows or values as bullets and the rest of the model's deck is kept. If anything
-else is still wrong, or the API cannot be reached, build a plain deck from the notes (each
-line becomes text, at most 4 slides, nothing dropped). Then build the deck
+list (never a loop); if that fails too or the API cannot be reached, build a plain deck from
+the notes (each line becomes text, at most 4 slides, nothing dropped). Then build the deck
 and check the saved file. At most two model calls per run, no agent loop, no code generation.
 A missing or rejected key is not hidden by the fallback: it stops with a clear message.
 
@@ -151,8 +149,9 @@ strict mode; limits are given in descriptions and the catalog, and enforced afte
 
 1. pulls one JSON object out of the reply, even inside code fences or prose;
 2. checks types and 1 to 4 slides with Pydantic;
-3. checks every slide against its layout: known layout, no text in slots the layout lacks,
-   required slots filled, and length limits;
+3. checks every slide against its layout: known layout, required slots filled, and length
+   limits (text in a slot the layout does not have is ignored with a warning, since it would
+   never be placed on the slide);
 4. returns every problem at once as `path: message`, for example
    `slides[1].head2: must not be empty`, ready for one repair call.
 
@@ -194,12 +193,9 @@ The model may add a **table** when the notes compare several options on several 
 - A table takes the place of the layout's first bullet box, at its exact position, because the
   Master has no table layout. A chart goes into the layout's chart box.
 - **Every number in a table or chart must appear in the notes.** An invented or calculated
-  number is a validation error and goes to the repair call, and is never shown, not even as
-  a bullet. Limits: 8 rows by 6 columns and 40 characters per cell, 8 categories, 3 series.
+  number is a validation error and goes to the repair call. Limits: 8 rows by 6 columns and 40 characters per cell, 8 categories, 3 series.
   Errors say exactly what is wrong ("7 columns and 9 rows; use 2 to 6 columns and 1 to 8
   rows"), so the single repair call can fix them.
-- If a table or chart is still wrong after the repair, it is shown as bullets ("Next.js: Load
-  1.1, Weeks 18") on the title-and-bullets layout, and the rest of the deck is kept.
 - Both are native PowerPoint objects, editable after generation and coloured by the theme, so
   they follow the team template. Bars start at zero, one colour per series. Table rows grow
   when a cell wraps, the font goes from 16 down to 10 pt to fit the box, and the header text

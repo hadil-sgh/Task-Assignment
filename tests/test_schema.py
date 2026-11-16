@@ -131,11 +131,11 @@ def test_empty_required_text(catalog: Catalog) -> None:
     ]  # the optional subheadline (head) and source line (head2) may stay empty
 
 
-def test_slot_the_layout_does_not_have(catalog: Catalog) -> None:
+def test_text_in_a_slot_the_layout_does_not_have_is_ignored(catalog: Catalog) -> None:
+    """It would never be placed on the slide, so it is not worth a repair or a fallback."""
     slide = {"layout": "L1", "title": "Results", "body": ["One"], "body2": ["Stray column"]}
-    assert errors_of(answer(slide), catalog) == [
-        "slides[0].body2: layout L1 has no 'body2' slot; leave it empty"
-    ]
+    _, warnings = parse_deck(answer(slide), catalog)
+    assert warnings == ["slides[0].body2: layout L1 has no 'body2' slot; ignored"]
 
 
 def test_wrong_types(catalog: Catalog) -> None:

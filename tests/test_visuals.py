@@ -156,25 +156,11 @@ def test_tables_up_to_8_rows_and_6_columns_fit_the_box(tmp_path: Path, catalog: 
     assert Emu(frame.top + frame.height).inches <= 1.98 + 4.62 + 0.01  # inside the body box
 
 
-def test_a_table_still_wrong_after_repair_becomes_bullets(tmp_path: Path) -> None:
-    too_wide = changed(TABLE_SLIDE)
-    too_wide["table"]["columns"] = ["Option", "a", "b", "c", "d", "e", "f"]
-    too_wide["table"]["rows"] = [["Next.js", "1.1", "150", "18", "x", "y", "z"]]
-    mock = MockClient([answer(too_wide, CHART_SLIDE)])  # the repair repeats the same answer
-    result = generate(NOTES, mock, tmp_path / "deck.pptx")
-    assert result.outcome == "repaired"  # the model's deck is kept, not the plain fallback
-    assert "slides[0]: table or chart shown as bullets" in result.warnings
-    first, second = Presentation(result.path).slides
-    assert "Next.js: a 1.1, b 150, c 18" in first.placeholders[18].text_frame.text
-    assert any(getattr(s, "has_chart", False) and s.has_chart for s in second.shapes)
-    assert result.problems == []
-
-
-def test_invented_numbers_are_never_kept_as_bullets(tmp_path: Path) -> None:
+def test_invented_numbers_after_the_repair_lead_to_the_fallback(tmp_path: Path) -> None:
     invented = changed(TABLE_SLIDE)
     invented["table"]["rows"][0][2] = "999"
     result = generate(NOTES, MockClient([answer(invented)]), tmp_path / "deck.pptx")
-    assert result.outcome == "fallback"  # the plain deck from the notes, without the 999
+    assert result.outcome == "fallback"  # the plain deck from the notes, never the 999
 
 
 # ---------------------------------------------------------------- building

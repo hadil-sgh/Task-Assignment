@@ -182,6 +182,22 @@ these out of new slides). The footer defaults to the first slide's title, the da
 **Independent check.** After saving, the file is opened again and checked from what is really
 in it: 1 to 4 slides, no empty placeholders, and no text that overflows its box.
 
+## Tables and charts
+
+The model may add a **table** when the notes compare several options on several figures, or a
+**bar chart** when one figure is compared across items or for percentages and shares.
+
+- The catalog offers the Master's diagram layouts (text on the left, a chart box on the
+  right); layouts with several charts are left out.
+- A table takes the place of the layout's first bullet box, at its exact position, because the
+  Master has no table layout. A chart goes into the layout's chart box.
+- **Every number in a table or chart must appear in the notes.** An invented or calculated
+  number is a validation error and goes to the repair call. Limits: 6 rows by 5 columns,
+  8 categories, 3 series.
+- Both are native PowerPoint objects, editable after generation and coloured by the theme, so
+  they follow the team template. Bars start at zero, one colour per series, and the table
+  header text switches to dark on a light team colour.
+
 ## Development
 
 ```bash

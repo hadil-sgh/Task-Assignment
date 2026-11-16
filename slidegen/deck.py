@@ -113,7 +113,7 @@ def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
     """A native table where the bullet box was: same position, header row in bold.
 
     The font goes from 16 pt down until all rows, including cells that wrap to a second
-    line, fit the box; never below 10 pt.
+    line, fit the box and no word is broken in half; never below 10 pt.
     """
     left, top, width, height = ph.left, ph.top, ph.width, ph.height
     ph.element.getparent().remove(ph.element)
@@ -121,7 +121,7 @@ def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
     column_pt = Emu(width).pt / len(table.columns)
     for size in range(TABLE_MAX_PT, TABLE_MIN_PT - 1, -1):
         heights = [_row_height(row, size, column_pt) for row in rows]
-        if sum(heights) <= Emu(height).pt:
+        if sum(heights) <= Emu(height).pt and _words_fit(rows, size, column_pt):
             break
     shape = slide.shapes.add_table(len(rows), len(table.columns), left, top, width,
                                    Pt(sum(heights)))  # fmt: skip
@@ -136,6 +136,12 @@ def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
                 run.font.bold = r == 0
                 if r == 0:
                     run.font.color.rgb = header_color
+
+
+def _words_fit(rows: list[list[str]], size: int, column_pt: float) -> bool:
+    """No word is broken in half: the longest word fits a column (bold width, with margins)."""
+    longest = max((len(word) for row in rows for cell in row for word in cell.split()), default=0)
+    return longest * size * 0.55 <= column_pt - 14.4
 
 
 def _row_height(row: list[str], size: int, column_pt: float) -> float:

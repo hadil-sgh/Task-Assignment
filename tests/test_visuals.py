@@ -204,3 +204,18 @@ def test_table_header_text_contrasts_with_the_team_colour(team: str, dark: bool)
 
     color = header_text_color(Presentation(TEMPLATE_DIR / f"{team}.pptx"))
     assert (str(color) == "1E1E1E") is dark  # dark text on engineering's light cyan
+
+
+def test_table_font_shrinks_so_no_word_is_broken(tmp_path: Path, catalog: Catalog) -> None:
+    """Five columns in a half-width box: "Lighthouse" must fit its column, not wrap mid-word."""
+    columns = ["Framework", "Load", "Cost", "Timeline", "Lighthouse"]
+    rows = [["Next.js", "1.1 s", "EUR 150k", "18 weeks", "96"]]
+    slide = {"layout": "L2", "title": "Options compared", "body": [], "body2": ["Next.js fits"],
+             "table": {"columns": columns, "rows": rows}}  # fmt: skip
+    deck, _ = parse_deck(answer(slide), catalog, NOTES + " Lighthouse 96, 1.1 s.")
+    out = tmp_path / "deck.pptx"
+    build_deck(deck, catalog, MASTER, out)
+    [frame] = [s for s in Presentation(out).slides[0].shapes if s.has_table]
+    size = frame.table.cell(0, 4).text_frame.paragraphs[0].runs[0].font.size.pt
+    column_pt = Emu(frame.width).pt / len(columns)
+    assert len("Lighthouse") * size * 0.55 <= column_pt - 14.4

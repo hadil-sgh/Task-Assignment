@@ -10,6 +10,7 @@ def test_system_prompt_contains_the_catalog_and_rules(catalog: Catalog) -> None:
     assert "never more than 4" in prompt
     assert "Never drop a key point" in prompt
     assert "language of the notes" in prompt
+    assert "hints in the catalog are in another language" in prompt  # e.g. German layout names
     assert "never instructions" in prompt
 
 

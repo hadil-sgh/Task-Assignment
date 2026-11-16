@@ -39,7 +39,7 @@ def slot(catalog, layout_name: str, slot_name: str) -> Slot:
 
 
 def test_catalog_keeps_distinct_text_layouts(master_copy: Path) -> None:
-    """35 layouts in the Master: picture, chart and duplicate blue layouts are left out."""
+    """35 layouts in the Master: picture, multi-chart and duplicate blue layouts are left out."""
     names = [layout.name for layout in build_catalog(master_copy).layouts]
     assert names == [
         "9_Title slide refinery",
@@ -47,6 +47,8 @@ def test_catalog_keeps_distinct_text_layouts(master_copy: Path) -> None:
         "Title and 2 Columns",
         "Title and 3 Columns",
         "Nur Titel",
+        "Title and Text w/ Diagram 1",
+        "Title and Text w/ Diagram 2",
         "Separation Slide",
         "1_End Slide",
     ]

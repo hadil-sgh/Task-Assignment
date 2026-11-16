@@ -35,6 +35,8 @@ from pptx.oxml.shapes.autoshape import CT_Shape
 from pptx.shapes.autoshape import Shape
 from pptx.util import Inches, Pt
 
+from slidegen.deck import remove_sample_slides
+
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "slidegen" / "templates"
 MASTER = TEMPLATE_DIR / "master.pptx"
 W, H = 13.333, 7.5  # slide size in inches
@@ -75,13 +77,6 @@ def build_template(name: str) -> Path:
     path = TEMPLATE_DIR / f"{name}.pptx"
     prs.save(path)
     return path
-
-
-def remove_sample_slides(prs: Presentation) -> None:
-    """A template holds layouts, not slides."""
-    for slide_id in list(prs.slides._sldIdLst):
-        prs.part.drop_rel(slide_id.rId)
-        prs.slides._sldIdLst.remove(slide_id)
 
 
 def theme_colors(prs: Presentation) -> dict[str, str]:

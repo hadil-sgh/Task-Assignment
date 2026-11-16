@@ -11,6 +11,7 @@ A missing or rejected API key is not covered by the fallback: only the user can 
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -68,11 +69,12 @@ def ask_model(notes: str, catalog: Catalog, client, result: Result) -> Deck:
     try:
         answer = call(client, first_messages(notes, catalog), schema, result)
         try:
-            deck, warnings = parse_deck(answer, catalog)
+            deck, warnings = parse_deck(answer, catalog, notes)
         except DeckError as error:
             result.outcome = "repaired"
+            result.warnings += [f"first answer rejected: {problem}" for problem in error.errors]
             messages = repair_messages(notes, catalog, answer, error.errors)
-            deck, warnings = parse_deck(call(client, messages, schema, result), catalog)
+            deck, warnings = parse_deck(call(client, messages, schema, result), catalog, notes)
     except (MissingKeyError, RejectedKeyError):
         raise
     except (LLMError, DeckError) as error:
@@ -93,8 +95,8 @@ def fallback_deck(notes: str, catalog: Catalog) -> Deck:
     """A plain but valid deck without the model: each line of the notes becomes text.
 
     The lines are spread over at most 4 slides of the template's title-and-bullets layout;
-    the first line of each slide is its title. Nothing is dropped: the fitter shrinks the font
-    when there is a lot of text.
+    the first sentence of each slide's first line is its title, the rest becomes a bullet.
+    Nothing is dropped: the fitter shrinks the font when there is a lot of text.
     """
     layout = plain_layout(catalog)
     body = next(slot for slot in layout.slots if slot.kind == "list")
@@ -104,8 +106,12 @@ def fallback_deck(notes: str, catalog: Catalog) -> Deck:
     size = math.ceil(len(lines) / count)
     slides = []
     for start in range(0, len(lines), size):
-        chunk = lines[start : start + size]
-        slides.append({"layout": layout.id, "title": chunk[0], body.name: chunk[1:] or chunk})
+        title, *bullets = lines[start : start + size]
+        first_sentence = re.match(r"(.{8,}?[?.!])\s+(.+)", title)  # "Website relaunch: which...?"
+        if first_sentence:
+            title, rest = first_sentence.groups()
+            bullets.insert(0, rest)
+        slides.append({"layout": layout.id, "title": title, body.name: bullets or [title]})
     return Deck.model_validate({"slides": slides})
 
 

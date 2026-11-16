@@ -96,9 +96,9 @@ def test_optional_slots_may_be_empty(catalog: Catalog) -> None:
 
 
 def test_unknown_layout_lists_the_valid_ids(catalog: Catalog) -> None:
-    errors = errors_of(answer({"layout": "L9", "title": "x"}), catalog)
+    errors = errors_of(answer({"layout": "L99", "title": "x"}), catalog)
     assert errors == [
-        "slides[0].layout: unknown layout 'L9'; use one of L0, L1, L2, L3, L4, L15, L34"
+        "slides[0].layout: unknown layout 'L99'; use one of L0, L1, L2, L3, L4, L8, L9, L15, L34"
     ]
 
 
@@ -131,11 +131,11 @@ def test_empty_required_text(catalog: Catalog) -> None:
     ]  # the optional subheadline (head) and source line (head2) may stay empty
 
 
-def test_slot_the_layout_does_not_have(catalog: Catalog) -> None:
+def test_text_in_a_slot_the_layout_does_not_have_is_ignored(catalog: Catalog) -> None:
+    """It would never be placed on the slide, so it is not worth a repair or a fallback."""
     slide = {"layout": "L1", "title": "Results", "body": ["One"], "body2": ["Stray column"]}
-    assert errors_of(answer(slide), catalog) == [
-        "slides[0].body2: layout L1 has no 'body2' slot; leave it empty"
-    ]
+    _, warnings = parse_deck(answer(slide), catalog)
+    assert warnings == ["slides[0].body2: layout L1 has no 'body2' slot; ignored"]
 
 
 def test_wrong_types(catalog: Catalog) -> None:
@@ -147,7 +147,7 @@ def test_wrong_types(catalog: Catalog) -> None:
 
 
 def test_all_errors_are_collected_at_once(catalog: Catalog) -> None:
-    slides = [{"layout": "L9", "title": "x"}, {"layout": "L1", "title": "", "body": []}]
+    slides = [{"layout": "L99", "title": "x"}, {"layout": "L1", "title": "", "body": []}]
     assert len(errors_of(answer(*slides), catalog)) == 3
 
 
@@ -197,7 +197,17 @@ def test_wire_schema_is_strict_and_flat(catalog: Catalog) -> None:
     schema = wire_schema(catalog)
     assert schema["strict"] is True
     slide = schema["schema"]["properties"]["slides"]["items"]
-    assert slide["properties"]["layout"]["enum"] == ["L0", "L1", "L2", "L3", "L4", "L15", "L34"]
+    assert slide["properties"]["layout"]["enum"] == [
+        "L0",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L8",
+        "L9",
+        "L15",
+        "L34",
+    ]
     assert list(slide["properties"]) == [
         "layout",
         "title",
@@ -207,6 +217,9 @@ def test_wire_schema_is_strict_and_flat(catalog: Catalog) -> None:
         "head2",
         "body2",
         "body3",
+        "head3",
+        "table",
+        "chart",
     ]
     assert slide["required"] == list(slide["properties"])
     assert slide["additionalProperties"] is False

@@ -41,8 +41,7 @@ W, H = 13.333, 7.5  # slide size in inches
 
 # Colours of the Master: navy and blues from its theme, greens and teals from its cover.
 NAVY, PERIWINKLE, PALE = "003282", "6673B8", "BAC6E7"
-GREEN, TEAL, MIST = "00966D", "2EA19C", "BDE0E2"
-LIGHT_GREEN, PALE_GREEN = "4DB88E", "A8DCC6"
+GREEN = "00966D"
 
 
 @dataclass
@@ -53,7 +52,9 @@ class Team:
     bullet_color: str
     background: str  # content slides
     separation: str  # background of the separation slide
+    cover: str  # colour of the Master's mosaic on the first and last slide
     decorate: Callable  # draws on the slide master
+    dark: bool = False  # light text on dark content slides
 
 
 def build_template(name: str) -> Path:
@@ -62,6 +63,9 @@ def build_template(name: str) -> Path:
     remove_sample_slides(prs)
     for layout in (prs.slide_layouts[0], prs.slide_layouts[-1]):  # first and last slide
         pin_theme_colors(layout, prs)
+        recolor_mosaic(layout, team.cover)
+    if team.dark:
+        swap_text_colors(prs.slide_master)
     set_accents(prs, team.primary, team.secondary)
     set_bullets(prs, team.bullet, team.bullet_color)
     background(prs.slide_master, team.background)
@@ -82,29 +86,54 @@ def remove_sample_slides(prs: Presentation) -> None:
 
 
 def theme_colors(prs: Presentation) -> dict[str, str]:
-    """Theme colour name -> hex value, e.g. {"accent1": "003282", ...}."""
+    """Theme colour name -> hex value, e.g. {"accent1": "003282", "tx1": "000000", ...}."""
     theme = etree.fromstring(prs.slide_master.part.part_related_by(RT.THEME).blob)
     scheme = theme.find(f".//{qn('a:clrScheme')}")
-    return {
-        etree.QName(slot).localname: slot[0].get("val") or slot[0].get("lastClr") for slot in scheme
+    colors = {  # system colours (e.g. "window") carry their hex value in lastClr
+        etree.QName(slot).localname: slot[0].get("lastClr") or slot[0].get("val") for slot in scheme
     }
+    color_map = prs.slide_master.element.find(qn("p:clrMap")).attrib  # tx1 -> dk1, bg1 -> lt1 ...
+    return colors | {alias: colors[slot] for alias, slot in color_map.items() if slot in colors}
 
 
 def pin_theme_colors(layout, prs: Presentation) -> None:
     """Replace theme colour references on a layout with the Master's actual colours.
 
-    The Master's title and end slides use accent 1 (for example the address on the end slide).
-    Pinning those colours first means the team colours below never change these two slides.
+    The Master's title and end slides use theme colours (for example accent 1 for the address
+    on the end slide). Pinning them first means the team colours never change these slides.
     """
     colors = theme_colors(prs)
     for ref in list(layout.element.iter(qn("a:schemeClr"))):
         value = colors.get(ref.get("val"))
-        if value and ref.get("val").startswith("accent"):
+        if value:
             pinned = etree.SubElement(ref.getparent(), qn("a:srgbClr"), val=value)
             for child in ref:  # keep tints and shades
                 pinned.append(child)
             ref.addprevious(pinned)
             ref.getparent().remove(ref)
+
+
+def recolor_mosaic(layout, color: str) -> None:
+    """Show the Master's full-slide mosaic picture in the team colour, fading to white.
+
+    PowerPoint's duotone effect maps the picture's dark-to-light tones onto two colours, so
+    the mosaic keeps its exact pattern. The logo and other pictures are left as they are.
+    """
+    for pic in layout.element.iter(qn("p:pic")):
+        width = int(pic.find(f".//{qn('a:xfrm')}/{qn('a:ext')}").get("cx"))
+        if width >= Inches(13):
+            blip = pic.find(f".//{qn('a:blip')}")
+            blip.insert(0, parse_xml(
+                f'<a:duotone {nsdecls("a")}><a:srgbClr val="{color}"/>'
+                '<a:srgbClr val="FFFFFF"/></a:duotone>'
+            ))  # fmt: skip
+
+
+def swap_text_colors(master) -> None:
+    """Dark slides: theme text colours become light and backgrounds dark."""
+    master.element.find(qn("p:clrMap")).attrib.update(
+        {"bg1": "dk1", "tx1": "lt1", "bg2": "dk2", "tx2": "lt2"}
+    )
 
 
 def set_accents(prs: Presentation, primary: str, secondary: str) -> None:
@@ -202,41 +231,43 @@ def label(master, box, value: str, color: str) -> None:
 # subheadline and the body (y 1.6 to 1.9 in), the left margin (x < 0.65 in) and the right
 # margin (x > 12.65 in). Text boxes never overlap these.
 
-DARK_TEAL, DEEP_PERIWINKLE, DEEP_GREEN = "17807C", "3B4A9C", "00704F"
+RASPBERRY, PINK, BLUSH, ORANGE = "C2185B", "F8D7E3", "FCE8EF", "EB7D00"
+DEEP, PANEL, GRIDLINE, CYAN = "0A1F3D", "12345F", "16365F", "5CC8E0"
+AMBER, LIGHT_AMBER, PALE_AMBER, PEACH = "B35900", "F5A54A", "FFD8A8", "FFF1E0"
 
 
 def marketing(master) -> None:
-    """Bold: a teal band across the top and circles in the corner."""
-    shape(master, (12.78, 0.8, 0.36, 0.36), GREEN, "ellipse")  # right margin
-    shape(master, (12.88, 1.35, 0.16, 0.16), NAVY, "ellipse")
-    shape(master, (0, 0, W, 0.16), TEAL)  # band across the top
-    shape(master, (11.3, -1.9, 2.6, 2.6), MIST, "ellipse")  # top right, above the title
+    """Bold: a raspberry band across the top and circles in the corner."""
+    shape(master, (12.78, 0.8, 0.36, 0.36), ORANGE, "ellipse")  # right margin
+    shape(master, (12.88, 1.35, 0.16, 0.16), RASPBERRY, "ellipse")
+    shape(master, (0, 0, W, 0.16), RASPBERRY)  # band across the top
+    shape(master, (11.3, -1.9, 2.6, 2.6), PINK, "ellipse")  # top right, above the title
 
 
 def engineering(master) -> None:
-    """Technical: a blueprint grid on a light blue-grey page, with a corner bracket."""
-    label(master, (9.6, 0.22, 3.0, 0.35), "ENGINEERING", DEEP_PERIWINKLE)
-    shape(master, (0.3, 0.3, 0.5, 0.05), DEEP_PERIWINKLE)  # corner bracket, top-left margin
-    shape(master, (0.3, 0.3, 0.05, 0.5), DEEP_PERIWINKLE)
-    for i in range(1, 15):  # white blueprint grid behind everything
-        shape(master, (0, i * 0.5, W, 0.012), "FFFFFF")
+    """Technical: dark slides with a blueprint grid and a cyan corner bracket."""
+    label(master, (9.6, 0.22, 3.0, 0.35), "ENGINEERING", CYAN)
+    shape(master, (0.3, 0.3, 0.5, 0.05), CYAN)  # corner bracket, top-left margin
+    shape(master, (0.3, 0.3, 0.05, 0.5), CYAN)
+    for i in range(1, 15):  # blueprint grid behind everything
+        shape(master, (0, i * 0.5, W, 0.012), GRIDLINE)
     for i in range(1, 27):
-        shape(master, (i * 0.5, 0, 0.012, H), "FFFFFF")
+        shape(master, (i * 0.5, 0, 0.012, H), GRIDLINE)
 
 
 def finance(master) -> None:
-    """Report style: a navy side rail, a green rule under the heading, a bar-chart motif."""
-    shape(master, (0.72, 1.68, 9.96, 0.03), GREEN)  # rule between subheadline and body
-    heights, colors = [0.2, 0.32, 0.44, 0.56], [PALE_GREEN, LIGHT_GREEN, GREEN, NAVY]
+    """Report style: a navy side rail, an amber rule under the heading, a bar-chart motif."""
+    shape(master, (0.72, 1.68, 9.96, 0.03), ORANGE)  # rule between subheadline and body
+    heights, colors = [0.2, 0.32, 0.44, 0.56], [PALE_AMBER, LIGHT_AMBER, ORANGE, NAVY]
     for i, (height, color) in enumerate(zip(heights, colors, strict=True)):  # above the title
         shape(master, (11.6 + i * 0.25, 0.68 - height, 0.16, height), color)
     shape(master, (0, 0, 0.3, H), NAVY)  # side rail in the left margin
 
 
 TEAMS = {
-    "marketing": Team(DARK_TEAL, NAVY, "●", TEAL, "FFFFFF", "E3F3F2", marketing),
-    "engineering": Team(DEEP_PERIWINKLE, GREEN, "►", PERIWINKLE, "F3F5FA", "E6E9F5", engineering),
-    "finance": Team(DEEP_GREEN, NAVY, "▪", GREEN, "FFFFFF", "EEF6F2", finance),
+    "marketing": Team(RASPBERRY, ORANGE, "●", RASPBERRY, "FFFFFF", BLUSH, "9B0F4E", marketing),
+    "engineering": Team(CYAN, GREEN, "►", CYAN, DEEP, PANEL, "0B3C8F", engineering, dark=True),
+    "finance": Team(AMBER, NAVY, "▪", ORANGE, "FFFFFF", PEACH, "A34700", finance),
 }
 
 

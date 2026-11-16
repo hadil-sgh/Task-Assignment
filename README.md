@@ -30,24 +30,28 @@ or logged.
 (the folder is gitignored, because the template is not ours to publish) or pass any file with
 `--template`. The code reads its layouts directly; nothing in the code is specific to it.
 
-`slidegen/templates/` also holds four team templates, built before the company template
-arrived and since re-themed after it (its navy `#003282`, the green-to-teal of its cover,
-Arial Narrow with uppercase titles, a small "© R. STAHL" footer). Each keeps its own look:
+`slidegen/templates/` also holds four team templates built on **exactly the text grid of the
+company Master**: the same layouts, every text box at the Master's position and size, the
+Master's font sizes, Arial Narrow with uppercase titles, its navy `#003282` and the
+green-to-teal of its cover. Nothing is copied from the Master file itself (no logo, no
+images). `base` looks like the Master; the other teams change colours and add decorations
+only in the free areas around the text:
 
 | Template | Look |
 |---|---|
-| base | corporate: navy header band, green-to-teal mosaic cover, navy quote-style key message |
-| marketing | bold: navy cover with teal, green and periwinkle circles |
-| engineering | technical, dark: blueprint grid, corner brackets |
-| finance | light, data-driven: navy side rail, green bar-chart motifs |
+| base | like the Master: white slides, navy uppercase titles, green-to-teal triangle cover |
+| marketing | teal, green and periwinkle circles in the corners, navy cover |
+| engineering | dark slides with a blueprint grid and corner brackets |
+| finance | navy side rail and green bar-chart motifs |
 
 Use them with `--team base|marketing|engineering|finance`, or `--team auto` to pick one from
 the content of the notes. Without the company template installed, `auto` is the default.
 
-All four share the same eight layouts and placeholder indexes (Title Slide, Title and Content,
-Key Message, Two Content, Comparison, Title Only, Chart and Text, Table), so the code never
-changes per team. The team colours sit in the theme accents, so native charts and tables pick
-them up automatically.
+Layouts, as in the Master: Title Slide, Title and Content, Title and 2 Columns, Title and 3
+Columns, Title Only, Separation Slide, End Slide, plus Title, Text and Chart and Title and
+Table. All four teams share the same layouts and placeholder indexes, so the code never
+changes per team, and a test checks every text box against the Master's positions. The team
+colours sit in the theme accents, so native charts and tables pick them up automatically.
 
 python-pptx cannot create layouts from scratch, so `scripts/build_templates.py` starts from the
 python-pptx default template and reshapes its theme, master and layouts. The four looks live in
@@ -75,7 +79,7 @@ L0 9_Title slide refinery: title<=42, subtitle?<=100 "Presenter, Place, Date"
 L1 Titel und Inhalt: title<=51, head?<=120 "Optional Subheadline", body<=11x85, head2?<=171 "Optional: Sources and/or captions"
 L2 Title and 2 Columns: title<=51, head?<=120 "Optional Subheadline", body<=11x48, head2?<=171 "Optional: Sources and/or captions", body2<=11x48
 ...
-L15 Separation Slide: title<=22, subtitle?<=85 "Optional Subtext"
+L15 Separation Slide: title<=44, subtitle?<=85 "Optional Subtext"
 ```
 
 - `body<=11x85` means up to 11 bullets of 85 characters.

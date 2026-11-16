@@ -28,7 +28,7 @@ MAX_SLIDES = 4
 HARD_LIMIT = 2  # hard limit = 2 x budget
 BULLET_MARKS = re.compile(r"^\s*(?:[-*•▪■●►–]|\d+[.)])\s+")
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
-MAX_ROWS, MAX_COLUMNS, MAX_CELL = 6, 5, 30  # table limits (rows without the header)
+MAX_ROWS, MAX_COLUMNS, MAX_CELL = 8, 6, 40  # table limits (rows without the header)
 MAX_CATEGORIES, MAX_SERIES = 8, 3  # chart limits
 
 
@@ -262,20 +262,28 @@ def _check_visuals(slide: Slide, layout, notes: str | None) -> list[str]:
         errors.append("chart: this layout has no chart box; pick a chart layout or leave it empty")
     if chart := slide.chart:
         if not 1 <= len(chart.categories) <= MAX_CATEGORIES:
-            errors.append(f"chart: use 1 to {MAX_CATEGORIES} categories")
+            errors.append(f"chart: {len(chart.categories)} categories; use 1 to {MAX_CATEGORIES}")
         if not 1 <= len(chart.series) <= MAX_SERIES:
-            errors.append(f"chart: use 1 to {MAX_SERIES} series")
-        if any(len(series.values) != len(chart.categories) for series in chart.series):
-            errors.append("chart: every series needs one value per category")
+            errors.append(f"chart: {len(chart.series)} series; use 1 to {MAX_SERIES}")
+        for series in chart.series:
+            if len(series.values) != len(chart.categories):
+                errors.append(f"chart: series '{series.name}' has {len(series.values)} values "
+                              f"for {len(chart.categories)} categories")  # fmt: skip
     if table := slide.table:
         if not any(slot.kind == "list" for slot in layout.slots):
             errors.append("table: this layout has no bullet box for a table")
-        if not 2 <= len(table.columns) <= MAX_COLUMNS or not 1 <= len(table.rows) <= MAX_ROWS:
-            errors.append(f"table: use 2 to {MAX_COLUMNS} columns and 1 to {MAX_ROWS} rows")
-        if any(len(row) != len(table.columns) for row in table.rows):
-            errors.append("table: every row needs one cell per column")
-        if any(len(cell) > MAX_CELL for row in table.rows for cell in [*row, *table.columns]):
-            errors.append(f"table: keep every cell to {MAX_CELL} characters")
+        columns, rows = len(table.columns), len(table.rows)
+        if not 2 <= columns <= MAX_COLUMNS or not 1 <= rows <= MAX_ROWS:
+            errors.append(f"table: {columns} columns and {rows} rows; use 2 to {MAX_COLUMNS} "
+                          f"columns and 1 to {MAX_ROWS} rows (merge or drop columns)")  # fmt: skip
+        for number, row in enumerate(table.rows, start=1):
+            if len(row) != columns:
+                errors.append(f"table: row {number} has {len(row)} cells for {columns} columns")
+        long_cells = [c for c in [*table.columns, *(c for r in table.rows for c in r)]
+                      if len(c) > MAX_CELL]  # fmt: skip
+        for cell in long_cells[:3]:  # a few examples are enough for the repair
+            errors.append(f'table: cell "{cell}" has {len(cell)} characters; '
+                          f"shorten it to {MAX_CELL}")  # fmt: skip
     if notes is not None:
         errors += _invented_numbers(slide, notes)
     return errors

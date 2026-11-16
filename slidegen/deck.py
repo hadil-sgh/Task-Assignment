@@ -11,18 +11,24 @@ slides, no empty placeholders and no text that overflows its box.
 from datetime import date
 from pathlib import Path
 
+from lxml import etree
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml import parse_xml
-from pptx.oxml.ns import nsdecls
-from pptx.util import Pt
+from pptx.oxml.ns import nsdecls, qn
+from pptx.util import Emu, Pt
 
 from slidegen.fit import Fit, fit_text, fits
-from slidegen.schema import MAX_SLIDES, Deck
+from slidegen.schema import MAX_SLIDES, Chart, Deck, Table
 from slidegen.template import Catalog
 
 FOOTER_TYPES = {PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.SLIDE_NUMBER}
+TABLE_MAX_PT, TABLE_MIN_PT = 16, 12
 
 
 def build_deck(
@@ -43,8 +49,15 @@ def build_deck(
         layout = catalog.layout(spec.layout)
         slide = prs.slides.add_slide(prs.slide_layouts[layout.index])
         slots = {slot.idx: slot for slot in layout.slots}
+        table_box = next((slot for slot in layout.slots if slot.kind == "list"), None)
         for ph in list(slide.placeholders):
             slot = slots.get(ph.placeholder_format.idx)
+            if slot and slot.kind == "chart" and spec.chart:
+                add_chart(ph, spec.chart)
+                continue
+            if slot and slot is table_box and spec.table:
+                add_table(slide, ph, spec.table, header_text_color(prs))
+                continue
             value = spec.slots.get(slot.name) if slot else None
             if not value:
                 ph.element.getparent().remove(ph.element)  # nothing to show: no empty box
@@ -69,6 +82,66 @@ def write_text(ph, fitted: Fit) -> None:
         run = paragraph.add_run()
         run.text = text
         run.font.size = Pt(fitted.size)
+
+
+def add_chart(ph, chart: Chart) -> None:
+    """A native, editable bar chart in the layout's chart box, in the theme's colours."""
+    data = CategoryChartData()
+    data.categories = chart.categories
+    for series in chart.series:
+        data.add_series(series.name, series.values)
+    graph = ph.insert_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, data).chart
+    graph.font.size = Pt(12)
+    graph.has_title = bool(chart.title)
+    if chart.title:
+        graph.chart_title.text_frame.text = chart.title
+        graph.chart_title.text_frame.paragraphs[0].runs[0].font.size = Pt(14)
+    graph.has_legend = len(chart.series) > 1
+    if graph.has_legend:
+        graph.legend.position = XL_LEGEND_POSITION.BOTTOM
+        graph.legend.include_in_layout = False
+    plot = graph.plots[0]
+    plot.gap_width = 60
+    plot.vary_by_categories = False  # one colour per series, not per bar
+    plot.has_data_labels = True
+    plot.data_labels.font.size = Pt(11)
+    graph.value_axis.minimum_scale = 0  # bars start at zero, so differences are not exaggerated
+
+
+def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
+    """A native table where the bullet box was: same position, header row in bold.
+
+    The font goes from 16 pt down so that all rows fit the box, never below 12 pt.
+    """
+    left, top, width, height = ph.left, ph.top, ph.width, ph.height
+    ph.element.getparent().remove(ph.element)
+    rows = [table.columns, *table.rows]
+    size = max(TABLE_MIN_PT, min(TABLE_MAX_PT, int(Emu(height).pt / (len(rows) * 2.2))))
+    row_height = Pt(size * 2.2)
+    shape = slide.shapes.add_table(len(rows), len(table.columns), left, top, width,
+                                   row_height * len(rows))  # fmt: skip
+    for r, values in enumerate(rows):
+        shape.table.rows[r].height = row_height
+        for c, value in enumerate(values):
+            cell = shape.table.cell(r, c)
+            cell.text = value
+            run = cell.text_frame.paragraphs[0].runs[0] if value else None
+            if run:
+                run.font.size = Pt(size)
+                run.font.bold = r == 0
+                if r == 0:
+                    run.font.color.rgb = header_color
+
+
+def header_text_color(prs) -> RGBColor:
+    """The table header is filled with the theme's accent 1 (the team colour): dark text on a
+    light colour, white text on a dark one."""
+    theme = etree.fromstring(prs.slide_master.part.part_related_by(RT.THEME).blob)
+    color = theme.find(f".//{qn('a:accent1')}")[0]
+    value = color.get("lastClr") or color.get("val")
+    red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+    light = 0.299 * red + 0.587 * green + 0.114 * blue > 150  # perceived brightness
+    return RGBColor(0x1E, 0x1E, 0x1E) if light else RGBColor(0xFF, 0xFF, 0xFF)
 
 
 def remove_sample_slides(prs) -> None:
@@ -119,8 +192,8 @@ def check_deck_file(path: Path, catalog: Catalog) -> list[str]:
         slots = {slot.idx: slot for slot in layout.slots}
         for ph in slide.placeholders:
             slot = slots.get(ph.placeholder_format.idx)
-            if ph.placeholder_format.type in FOOTER_TYPES or slot is None:
-                continue
+            if ph.placeholder_format.type in FOOTER_TYPES or slot is None or not ph.has_text_frame:
+                continue  # footer boxes, and chart boxes now holding a chart
             paragraphs = [p.text for p in ph.text_frame.paragraphs]
             if not "".join(paragraphs).strip():
                 problems.append(f"slide {number}: '{slot.name}' is empty")

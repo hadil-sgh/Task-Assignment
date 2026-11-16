@@ -87,6 +87,7 @@ def ask_model(notes: str, catalog: Catalog, client, result: Result) -> Deck:
             deck, warnings = parse_deck(answer, catalog, notes)
         except DeckError as error:
             result.outcome = "repaired"
+            result.warnings += [f"first answer rejected: {problem}" for problem in error.errors]
             messages = repair_messages(notes, catalog, answer, error.errors)
             answer = call(client, messages, schema, result)
             try:

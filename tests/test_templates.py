@@ -55,6 +55,15 @@ def test_first_and_last_slides_are_the_masters(team: str) -> None:
 
 
 @pytest.mark.parametrize("team", TEAMS)
+def test_mosaic_is_recoloured_in_the_team_colour(team: str) -> None:
+    """The Master's mosaic picture gets a duotone effect; its other pictures stay untouched."""
+    for index in (TITLE_SLIDE, END_SLIDE):
+        layout = load(team).slide_layouts[index].element
+        assert len(list(layout.iter(qn("a:duotone")))) == 1
+    assert not list(load("master").slide_layouts[TITLE_SLIDE].element.iter(qn("a:duotone")))
+
+
+@pytest.mark.parametrize("team", TEAMS)
 def test_master_footer_date_and_logo_are_kept(team: str) -> None:
     names = {s.name for s in load("master").slide_master.shapes}
     assert names <= {s.name for s in load(team).slide_master.shapes}

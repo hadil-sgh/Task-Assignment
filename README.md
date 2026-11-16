@@ -31,22 +31,25 @@ layouts directly; nothing in the code is specific to it, and `--template` accept
 .pptx.
 
 The three team templates are **the Master itself, expanded**. `scripts/build_templates.py`
-copies `master.pptx` and changes only three things per team:
+copies `master.pptx` and gives each team its own colours and style on the content slides:
 
-1. a team colour (theme accent 2; accent 1 stays the Master's navy, used by its titles);
-2. bullet marks in that colour on the content boxes (the Master's body text has none);
-3. a few decorative shapes in the free margins of the content slides, drawn behind the
-   Master's own footer, date, slide number and logo.
+1. a team colour as the main theme colour (accent 1). The Master uses accent 1 for titles,
+   subheadlines, chart series and table headers, so they all follow the team;
+2. bullet marks on the content boxes (the Master's body text has none);
+3. a background tint for the content slides and the separation slide;
+4. decorative shapes in the free margins, drawn behind the Master's footer, date, slide
+   number and logo.
 
-Everything else stays the Master's: its first and last slides, all its layouts, every text
-box and font, the optional subheadline and source line, the footer, date and slide number.
+The Master's first and last slides stay exactly as they are: their colours are pinned before
+the theme changes. All layouts, text boxes, fonts, the optional subheadline and source line,
+the footer, date and slide number are the Master's in every team.
 
 | Template | Look |
 |---|---|
 | base (the Master) | the company template, unchanged |
-| marketing | teal bullets, circles in the top-right corner |
-| engineering | periwinkle arrow bullets, faint blueprint grid, corner bracket |
-| finance | green square bullets, navy side rail, small bar-chart motif |
+| marketing | dark teal titles, teal round bullets, teal band and circles at the top, teal-tinted separation slide |
+| engineering | deep periwinkle titles, arrow bullets, light blue-grey page with a white blueprint grid, corner bracket |
+| finance | deep green titles, square bullets, navy side rail, green rule under the heading, bar-chart motif |
 
 Choose with `--team base|marketing|engineering|finance`, or `--team auto` to pick one from the
 content of the notes. Because the layouts and placeholders are the Master's in every team,

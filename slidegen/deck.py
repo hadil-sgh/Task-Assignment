@@ -8,6 +8,7 @@ Checking: re-open the saved file and verify, from what is really in it, that it 
 slides, no empty placeholders and no text that overflows its box.
 """
 
+import math
 from datetime import date
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from slidegen.schema import MAX_SLIDES, Chart, Deck, Table
 from slidegen.template import Catalog
 
 FOOTER_TYPES = {PP_PLACEHOLDER.FOOTER, PP_PLACEHOLDER.DATE, PP_PLACEHOLDER.SLIDE_NUMBER}
-TABLE_MAX_PT, TABLE_MIN_PT = 16, 12
+TABLE_MAX_PT, TABLE_MIN_PT = 16, 10  # tables may go to 10 pt, still readable
 
 
 def build_deck(
@@ -111,17 +112,21 @@ def add_chart(ph, chart: Chart) -> None:
 def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
     """A native table where the bullet box was: same position, header row in bold.
 
-    The font goes from 16 pt down so that all rows fit the box, never below 12 pt.
+    The font goes from 16 pt down until all rows, including cells that wrap to a second
+    line, fit the box; never below 10 pt.
     """
     left, top, width, height = ph.left, ph.top, ph.width, ph.height
     ph.element.getparent().remove(ph.element)
     rows = [table.columns, *table.rows]
-    size = max(TABLE_MIN_PT, min(TABLE_MAX_PT, int(Emu(height).pt / (len(rows) * 2.2))))
-    row_height = Pt(size * 2.2)
+    column_pt = Emu(width).pt / len(table.columns)
+    for size in range(TABLE_MAX_PT, TABLE_MIN_PT - 1, -1):
+        heights = [_row_height(row, size, column_pt) for row in rows]
+        if sum(heights) <= Emu(height).pt:
+            break
     shape = slide.shapes.add_table(len(rows), len(table.columns), left, top, width,
-                                   row_height * len(rows))  # fmt: skip
+                                   Pt(sum(heights)))  # fmt: skip
     for r, values in enumerate(rows):
-        shape.table.rows[r].height = row_height
+        shape.table.rows[r].height = Pt(heights[r])
         for c, value in enumerate(values):
             cell = shape.table.cell(r, c)
             cell.text = value
@@ -131,6 +136,17 @@ def add_table(slide, ph, table: Table, header_color: RGBColor) -> None:
                 run.font.bold = r == 0
                 if r == 0:
                     run.font.color.rgb = header_color
+
+
+def _row_height(row: list[str], size: int, column_pt: float) -> float:
+    """Height of a table row in points: the tallest cell, estimating how its text wraps.
+
+    Cell margins are PowerPoint's defaults (0.1 in left and right, 0.05 in top and bottom);
+    the average character width is a generous half the font size.
+    """
+    per_line = max(1, int((column_pt - 14.4) / (size * 0.5)))
+    lines = max(math.ceil(len(cell) / per_line) or 1 for cell in row)
+    return lines * size * 1.2 + 7.2 + 4  # lines, margins, a little air
 
 
 def header_text_color(prs) -> RGBColor:

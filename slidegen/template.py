@@ -28,7 +28,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 MASTER = TEMPLATE_DIR / "master.pptx"  # the company template: the default, and team "base"
 TEAMS = ["base", "engineering", "finance", "marketing"]  # the others are built from MASTER
 DEFAULT_TEAM = "base"
-CATALOG_VERSION = 4  # bump when the budget rules change, so old caches are rebuilt
+CATALOG_VERSION = 5  # bump when the budget rules change, so old caches are rebuilt
 
 TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 TEXT_TYPES = TITLE_TYPES | {PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT}
@@ -47,7 +47,7 @@ GENERIC_PROMPTS = ("click to edit", "master")  # template boilerplate, not a use
 class Slot:
     name: str  # what the model fills: title, subtitle, head, body, head2, body2 ...
     idx: int  # placeholder index on the layout
-    kind: str  # "text" (one string) or "list" (bullets)
+    kind: str  # "text" (one string), "list" (bullets) or "chart"
     lines: int
     chars: int  # characters per line
     font_pt: float  # font size in the template
@@ -76,6 +76,8 @@ class Slot:
         return self.lines * self.chars
 
     def describe(self) -> str:
+        if self.kind == "chart":
+            return "chart"
         limit = f"{self.lines}x{self.chars}" if self.kind == "list" else str(self.budget)
         hint = f' "{self.hint}"' if self.hint else ""
         return f"{self.name}{'?' if self.optional else ''}<={limit}{hint}"
@@ -139,8 +141,8 @@ def build_catalog(template: Path, key: str = "") -> Catalog:
         placeholders = [
             p for p in layout.placeholders if p.placeholder_format.type not in IGNORED_TYPES
         ]
-        if not placeholders or not all(_is_text(p) for p in placeholders):
-            continue  # skip layouts with pictures, charts, tables, or no text at all
+        if not _usable(placeholders):
+            continue
         slots = [_measure(p, prs.slide_master, fonts) for p in placeholders]
         layouts.append(Layout(f"L{index}", layout.name, _name_slots(slots, placeholders)))
     return Catalog(template.name, key, dedupe(layouts))
@@ -169,6 +171,16 @@ def _theme_fonts(master) -> dict[str, str]:
     return {"+mj-lt": major.get("typeface", ""), "+mn-lt": minor.get("typeface", "")}
 
 
+def _usable(placeholders: list) -> bool:
+    """Text layouts, plus layouts with exactly one chart box next to text.
+
+    Layouts with pictures, tables, several charts or no text are skipped.
+    """
+    charts = [p for p in placeholders if p.placeholder_format.type == PP_PLACEHOLDER.CHART]
+    texts = [p for p in placeholders if _is_text(p)]
+    return bool(texts) and len(charts) <= 1 and len(texts) + len(charts) == len(placeholders)
+
+
 def _is_text(ph) -> bool:
     vertical = ph.element.find(f"{qn('p:nvSpPr')}/{qn('p:nvPr')}/{qn('p:ph')}").get("orient")
     return ph.placeholder_format.type in TEXT_TYPES and vertical != "vert"
@@ -187,6 +199,10 @@ def _from_dict(data: dict) -> Catalog:
 
 def _measure(ph, master, fonts: dict[str, str]) -> Slot:
     """Work out how many lines and characters fit in a placeholder at its template font."""
+    if ph.placeholder_format.type == PP_PLACEHOLDER.CHART:  # filled with a chart, not text
+        width, height = round(Emu(ph.width).pt, 1), round(Emu(ph.height).pt, 1)
+        return Slot("chart", ph.placeholder_format.idx, "chart", 0, 0, 0.0,
+                    width_pt=width, height_pt=height)  # fmt: skip
     style = _style_sources(ph, master)
     size = int(_find(style, "a:defRPr", "sz") or 1800) / 100
     bold = _find(style, "a:defRPr", "b") == "1"
@@ -274,6 +290,8 @@ def _name_slots(slots: list[Slot], placeholders: list) -> list[Slot]:
         kind = ph.placeholder_format.type
         if kind in TITLE_TYPES:
             base = "title"
+        elif kind == PP_PLACEHOLDER.CHART:
+            base = "chart"
         elif kind == PP_PLACEHOLDER.SUBTITLE or (slot.lines == 1 and not has_bullets):
             base, slot.optional = "subtitle", True
         elif slot.lines == 1:

@@ -24,6 +24,17 @@ OPENROUTER_API_KEY=your-key-here
 `.env` is gitignored, and CI scans every push for committed secrets. The key is never printed
 or logged.
 
+## The model call
+
+`slidegen/llm.py` makes one call to OpenRouter's OpenAI-compatible endpoint with a strict JSON
+schema response format, and records tokens, cost (reported by OpenRouter) and latency.
+
+- Timeouts, rate limits (429) and server errors (5xx) are retried up to 3 times, waiting
+  1, 2 and 4 seconds, or what the server's `Retry-After` header asks for.
+- A rejected key (401/403) stops at once with a clear message; retrying cannot help.
+- Other client errors (4xx) fail at once.
+- `MockClient` returns canned answers with no key and no network, for tests and `--mock`.
+
 ## Templates
 
 **The company Master is the default** (`slidegen/templates/master.pptx`). The code reads its

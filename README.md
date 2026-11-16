@@ -57,6 +57,18 @@ or logged.
 `slidegen/llm.py` makes one call to OpenRouter's OpenAI-compatible endpoint with a strict JSON
 schema response format, and records tokens, cost (reported by OpenRouter) and latency.
 
+**Default model: `openai/gpt-5.6-terra`**, chosen with `notebooks/evaluate.ipynb` (8 notes x
+2 runs per model, decks scored blind by Claude Opus 5.5, twice):
+
+| Model | First try | Quality (1-5) | Cost per deck | Latency |
+|---|---|---|---|---|
+| GPT-5.6 Terra | 100% | 3.83 | $0.003 | 3.0 s |
+| Claude Sonnet 5.5 | 94% | 3.58 | $0.011 | 4.6 s |
+
+Qwen 3.8 Max could not be compared: its requests failed in this setup, so every Qwen run fell
+back to the plain deck. The judge's two scorings differed by 0.11 points on average. Any other
+OpenRouter model can be used with `--model`.
+
 - Timeouts, rate limits (429) and server errors (5xx) are retried up to 3 times, waiting
   1, 2 and 4 seconds, or what the server's `Retry-After` header asks for.
 - A rejected key (401/403) stops at once with a clear message; retrying cannot help.

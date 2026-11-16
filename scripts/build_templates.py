@@ -1,20 +1,26 @@
 """Build the team templates from the company Master template.
 
-Each team template is a copy of slidegen/templates/master.pptx with three small changes:
+Each team template is a copy of slidegen/templates/master.pptx with its own colours and style
+on the content slides:
 
-1. a team colour (theme accent 2, so it is also the second colour of native charts);
-2. bullet marks in that colour (the Master's body text has none);
-3. a few decorative shapes in the free margins of the content slides, drawn behind the
-   Master's own footer, date, slide number and logo.
+1. a team colour as the main theme colour (accent 1). The Master uses accent 1 for its titles,
+   subheadlines, chart series and table headers, so all of them follow the team;
+2. bullet marks on the content boxes (the Master's body text has none);
+3. a background tint for the content slides and the separation slide;
+4. a few decorative shapes in the free margins, drawn behind the Master's own footer, date,
+   slide number and logo.
 
-Everything else is the Master's: its first and last slides, its layouts, every text box and
-font, the optional subheadline and source line, the footer, date and slide number. Because
-the layouts and placeholders are unchanged, the generator works the same with every team.
+The Master's first and last slides, its layouts, every text box and font, the optional
+subheadline and source line, the footer, date and slide number stay exactly as they are.
+Because the layouts and placeholders are unchanged, the generator works the same with every
+team. The base template is the Master itself and is not built here.
 
 Run:  uv run python scripts/build_templates.py
 Writes slidegen/templates/<team>.pptx
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from lxml import etree
@@ -36,17 +42,34 @@ W, H = 13.333, 7.5  # slide size in inches
 # Colours of the Master: navy and blues from its theme, greens and teals from its cover.
 NAVY, PERIWINKLE, PALE = "003282", "6673B8", "BAC6E7"
 GREEN, TEAL, MIST = "00966D", "2EA19C", "BDE0E2"
-LIGHT_GREEN, PALE_GREEN, GRID = "4DB88E", "A8DCC6", "E9EEF7"
+LIGHT_GREEN, PALE_GREEN = "4DB88E", "A8DCC6"
 
 
-def build_template(team: str) -> Path:
-    accent, bullet, decorate = TEAMS[team]
+@dataclass
+class Team:
+    primary: str  # theme accent 1: titles, subheadlines, first chart series, table headers
+    secondary: str  # theme accent 2: second chart series
+    bullet: str
+    bullet_color: str
+    background: str  # content slides
+    separation: str  # background of the separation slide
+    decorate: Callable  # draws on the slide master
+
+
+def build_template(name: str) -> Path:
+    team = TEAMS[name]
     prs = Presentation(MASTER)
     remove_sample_slides(prs)
-    set_accent(prs, accent)
-    set_bullets(prs, bullet, accent)
-    decorate(prs.slide_master)
-    path = TEMPLATE_DIR / f"{team}.pptx"
+    for layout in (prs.slide_layouts[0], prs.slide_layouts[-1]):  # first and last slide
+        pin_theme_colors(layout, prs)
+    set_accents(prs, team.primary, team.secondary)
+    set_bullets(prs, team.bullet, team.bullet_color)
+    background(prs.slide_master, team.background)
+    for layout in prs.slide_layouts:
+        if layout.name == "Separation Slide":
+            background(layout, team.separation)
+    team.decorate(prs.slide_master)
+    path = TEMPLATE_DIR / f"{name}.pptx"
     prs.save(path)
     return path
 
@@ -58,15 +81,51 @@ def remove_sample_slides(prs: Presentation) -> None:
         prs.slides._sldIdLst.remove(slide_id)
 
 
-def set_accent(prs: Presentation, color: str) -> None:
-    """Theme accent 2 = team colour. Accent 1 stays the Master's navy, used by its titles."""
+def theme_colors(prs: Presentation) -> dict[str, str]:
+    """Theme colour name -> hex value, e.g. {"accent1": "003282", ...}."""
+    theme = etree.fromstring(prs.slide_master.part.part_related_by(RT.THEME).blob)
+    scheme = theme.find(f".//{qn('a:clrScheme')}")
+    return {
+        etree.QName(slot).localname: slot[0].get("val") or slot[0].get("lastClr") for slot in scheme
+    }
+
+
+def pin_theme_colors(layout, prs: Presentation) -> None:
+    """Replace theme colour references on a layout with the Master's actual colours.
+
+    The Master's title and end slides use accent 1 (for example the address on the end slide).
+    Pinning those colours first means the team colours below never change these two slides.
+    """
+    colors = theme_colors(prs)
+    for ref in list(layout.element.iter(qn("a:schemeClr"))):
+        value = colors.get(ref.get("val"))
+        if value and ref.get("val").startswith("accent"):
+            pinned = etree.SubElement(ref.getparent(), qn("a:srgbClr"), val=value)
+            for child in ref:  # keep tints and shades
+                pinned.append(child)
+            ref.addprevious(pinned)
+            ref.getparent().remove(ref)
+
+
+def set_accents(prs: Presentation, primary: str, secondary: str) -> None:
+    """Write the team colours into theme accents 1 and 2.
+
+    The title and end slides use other theme colours (dark 2 and white), so they keep the
+    Master's look.
+    """
     part = prs.slide_master.part.part_related_by(RT.THEME)
     theme = etree.fromstring(part.blob)
-    slot = theme.find(f".//{qn('a:clrScheme')}/{qn('a:accent2')}")
-    slot.clear()
-    etree.SubElement(slot, qn("a:srgbClr"), val=color)
+    for slot_name, color in (("a:accent1", primary), ("a:accent2", secondary)):
+        slot = theme.find(f".//{qn('a:clrScheme')}/{qn(slot_name)}")
+        slot.clear()
+        etree.SubElement(slot, qn("a:srgbClr"), val=color)
     # The theme is a plain binary part in python-pptx, so we replace its bytes.
     part._blob = etree.tostring(theme, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def background(owner, color: str) -> None:
+    owner.background.fill.solid()
+    owner.background.fill.fore_color.rgb = RGBColor.from_string(color)
 
 
 def set_bullets(prs: Presentation, char: str, color: str) -> None:
@@ -139,44 +198,51 @@ def label(master, box, value: str, color: str) -> None:
 
 
 # ---------------------------------------------------------------- the three teams
-# Free areas of the Master's content slides: above the title (y < 0.7 in), the left margin
-# (x < 0.65 in) and the right margin (x > 12.65 in). Text boxes never overlap these.
+# Free areas of the Master's content slides: above the title (y < 0.7 in), between the
+# subheadline and the body (y 1.6 to 1.9 in), the left margin (x < 0.65 in) and the right
+# margin (x > 12.65 in). Text boxes never overlap these.
+
+DARK_TEAL, DEEP_PERIWINKLE, DEEP_GREEN = "17807C", "3B4A9C", "00704F"
 
 
 def marketing(master) -> None:
-    shape(master, (11.6, -1.75, 2.4, 2.4), MIST, "ellipse")  # top right, above the title
-    shape(master, (12.78, 0.8, 0.36, 0.36), TEAL, "ellipse")  # right margin
+    """Bold: a teal band across the top and circles in the corner."""
+    shape(master, (12.78, 0.8, 0.36, 0.36), GREEN, "ellipse")  # right margin
     shape(master, (12.88, 1.35, 0.16, 0.16), NAVY, "ellipse")
+    shape(master, (0, 0, W, 0.16), TEAL)  # band across the top
+    shape(master, (11.3, -1.9, 2.6, 2.6), MIST, "ellipse")  # top right, above the title
 
 
 def engineering(master) -> None:
-    for i in range(1, 27):  # faint blueprint grid behind the slide
-        shape(master, (i * 0.5, 0, 0.01, H), GRID)
-    for i in range(1, 15):
-        shape(master, (0, i * 0.5, W, 0.01), GRID)
-    shape(master, (0.3, 0.3, 0.5, 0.04), PERIWINKLE)  # corner bracket in the top-left margin
-    shape(master, (0.3, 0.3, 0.04, 0.5), PERIWINKLE)
-    label(master, (9.6, 0.22, 3.0, 0.35), "ENGINEERING", PERIWINKLE)
+    """Technical: a blueprint grid on a light blue-grey page, with a corner bracket."""
+    label(master, (9.6, 0.22, 3.0, 0.35), "ENGINEERING", DEEP_PERIWINKLE)
+    shape(master, (0.3, 0.3, 0.5, 0.05), DEEP_PERIWINKLE)  # corner bracket, top-left margin
+    shape(master, (0.3, 0.3, 0.05, 0.5), DEEP_PERIWINKLE)
+    for i in range(1, 15):  # white blueprint grid behind everything
+        shape(master, (0, i * 0.5, W, 0.012), "FFFFFF")
+    for i in range(1, 27):
+        shape(master, (i * 0.5, 0, 0.012, H), "FFFFFF")
 
 
 def finance(master) -> None:
-    shape(master, (0, 0, 0.3, H), NAVY)  # side rail in the left margin
+    """Report style: a navy side rail, a green rule under the heading, a bar-chart motif."""
+    shape(master, (0.72, 1.68, 9.96, 0.03), GREEN)  # rule between subheadline and body
     heights, colors = [0.2, 0.32, 0.44, 0.56], [PALE_GREEN, LIGHT_GREEN, GREEN, NAVY]
     for i, (height, color) in enumerate(zip(heights, colors, strict=True)):  # above the title
         shape(master, (11.6 + i * 0.25, 0.68 - height, 0.16, height), color)
+    shape(master, (0, 0, 0.3, H), NAVY)  # side rail in the left margin
 
 
-# team -> (team colour, bullet character, decoration)
 TEAMS = {
-    "marketing": (TEAL, "●", marketing),
-    "engineering": (PERIWINKLE, "►", engineering),
-    "finance": (GREEN, "▪", finance),
+    "marketing": Team(DARK_TEAL, NAVY, "●", TEAL, "FFFFFF", "E3F3F2", marketing),
+    "engineering": Team(DEEP_PERIWINKLE, GREEN, "►", PERIWINKLE, "F3F5FA", "E6E9F5", engineering),
+    "finance": Team(DEEP_GREEN, NAVY, "▪", GREEN, "FFFFFF", "EEF6F2", finance),
 }
 
 
 def main() -> None:
-    for team in TEAMS:
-        print(build_template(team))
+    for name in TEAMS:
+        print(build_template(name))
 
 
 if __name__ == "__main__":

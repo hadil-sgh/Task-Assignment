@@ -1,9 +1,11 @@
 """Parsing and validating the model's answer against the base template catalog.
 
-Base catalog, for reference:
-  L0 Title Slide: title, subtitle          L3 Two Content: title, body, body2
-  L1 Title and Content: title, body        L4 Comparison: title, head, body, head2, body2
-  L2 Key Message: title, body (2 lines)    L5 Title Only: title
+Base catalog, for reference ("?" = optional):
+  L0 Title Slide: title, subtitle?              L4 Title and 3 Columns: title, head?, body,
+  L1 Title and Content: title, head?, body,         head2?, body2, body3
+      head2? (subheadline and source line)     L5 Title Only: title, subtitle?
+  L2 Separation Slide: title, subtitle?         L8 End Slide: title, subtitle?
+  L3 Title and 2 Columns: title, head?, body, head2?, body2
 """
 
 import json
@@ -20,7 +22,7 @@ GOOD = {
             "title": "Phase 1 finished on time",
             "body": ["312 luminaires", "No downtime"],
         },
-        {"layout": "L2", "title": "Approve phase 2 budget by 1 December", "body": []},
+        {"layout": "L2", "title": "Approve phase 2 by 1 December", "subtitle": ""},
     ]
 }
 
@@ -84,8 +86,9 @@ def test_text_is_cleaned(catalog: Catalog) -> None:
 
 def test_optional_slots_may_be_empty(catalog: Catalog) -> None:
     title_slide = {"layout": "L0", "title": "Ex-Lighting Upgrade", "subtitle": ""}
-    key_message = {"layout": "L2", "title": "Approve the budget", "body": []}
-    parse_deck(answer(title_slide, key_message), catalog)  # no error
+    separation = {"layout": "L2", "title": "Approve the budget", "subtitle": ""}
+    content = {"layout": "L1", "title": "Results", "head": "", "body": ["One"], "head2": ""}
+    parse_deck(answer(title_slide, separation, content), catalog)  # no error
 
 
 # ---------------------------------------------------------------- invalid answers
@@ -93,7 +96,9 @@ def test_optional_slots_may_be_empty(catalog: Catalog) -> None:
 
 def test_unknown_layout_lists_the_valid_ids(catalog: Catalog) -> None:
     errors = errors_of(answer({"layout": "L9", "title": "x"}), catalog)
-    assert errors == ["slides[0].layout: unknown layout 'L9'; use one of L0, L1, L2, L3, L4, L5"]
+    assert errors == [
+        "slides[0].layout: unknown layout 'L9'; use one of L0, L1, L2, L3, L4, L5, L8"
+    ]
 
 
 def test_too_many_slides(catalog: Catalog) -> None:
@@ -112,16 +117,17 @@ def test_empty_required_text(catalog: Catalog) -> None:
     slide = {
         "layout": "L4",
         "title": "",
-        "head": "Retrofit",
-        "body": ["Cheap"],
+        "head": "",
+        "body": ["Weil"],
         "head2": "",
         "body2": [],
+        "body3": [],
     }
     assert errors_of(answer(slide), catalog) == [
         "slides[0].title: must not be empty",
-        "slides[0].head2: must not be empty",
         "slides[0].body2: must not be empty",
-    ]
+        "slides[0].body3: must not be empty",
+    ]  # the optional subheadline (head) and source line (head2) may stay empty
 
 
 def test_slot_the_layout_does_not_have(catalog: Catalog) -> None:
@@ -165,15 +171,15 @@ def test_text_over_the_hard_limit_is_an_error(catalog: Catalog) -> None:
 
 
 def test_bullets_count_wrapped_lines(catalog: Catalog) -> None:
-    body = catalog.layout("L1").slots[1]  # 10 lines of 83 characters
+    body = next(s for s in catalog.layout("L1").slots if s.name == "body")
     two_lines_each = ["y" * (body.chars + 1)] * body.lines  # each bullet wraps to 2 lines
     _, warnings = parse_deck(
         answer({"layout": "L1", "title": "T", "body": two_lines_each}), catalog
     )
-    assert "over budget: 20 of 10 lines" in warnings[0]
+    assert f"over budget: {2 * body.lines} of {body.lines} lines" in warnings[0]
     too_many = ["short"] * (2 * body.lines + 1)
     [error] = errors_of(answer({"layout": "L1", "title": "T", "body": too_many}), catalog)
-    assert "too long: 21 lines, limit 10" in error
+    assert f"too long: {2 * body.lines + 1} lines, limit {body.lines}" in error
 
 
 def test_check_deck_returns_errors_and_warnings_separately(catalog: Catalog) -> None:
@@ -190,15 +196,16 @@ def test_wire_schema_is_strict_and_flat(catalog: Catalog) -> None:
     schema = wire_schema(catalog)
     assert schema["strict"] is True
     slide = schema["schema"]["properties"]["slides"]["items"]
-    assert slide["properties"]["layout"]["enum"] == ["L0", "L1", "L2", "L3", "L4", "L5"]
+    assert slide["properties"]["layout"]["enum"] == ["L0", "L1", "L2", "L3", "L4", "L5", "L8"]
     assert list(slide["properties"]) == [
         "layout",
         "title",
         "subtitle",
-        "body",
-        "body2",
         "head",
+        "body",
         "head2",
+        "body2",
+        "body3",
     ]
     assert slide["required"] == list(slide["properties"])
     assert slide["additionalProperties"] is False

@@ -15,13 +15,28 @@ TEAMS = ["base", "marketing", "engineering", "finance"]
 EXPECTED_LAYOUTS = [
     "Title Slide",
     "Title and Content",
-    "Key Message",
-    "Two Content",
-    "Comparison",
+    "Separation Slide",
+    "Title and 2 Columns",
+    "Title and 3 Columns",
     "Title Only",
-    "Chart and Text",
-    "Table",
+    "Title, Text and Chart",
+    "Title and Table",
+    "End Slide",
 ]
+
+# Text box positions of the company Master (x, y, width, height in inches), by layout and index.
+MASTER_POSITIONS = {
+    ("Title and Content", 0): (0.72, 0.78, 11.89, 0.47),  # title
+    ("Title and Content", 13): (0.72, 1.27, 11.89, 0.29),  # subheadline
+    ("Title and Content", 1): (0.72, 1.98, 9.96, 4.62),  # body
+    ("Title and Content", 22): (0.72, 6.75, 9.96, 0.15),  # source
+    ("Title and 2 Columns", 2): (6.90, 1.98, 5.71, 4.62),
+    ("Title and 3 Columns", 4): (8.96, 1.98, 3.65, 4.62),
+    ("Title Slide", 0): (0.72, 5.86, 9.96, 0.47),
+    ("Title Slide", 1): (0.72, 6.33, 9.96, 0.57),
+    ("Separation Slide", 0): (0.72, 1.92, 9.94, 1.82),
+    ("End Slide", 0): (0.72, 1.92, 9.94, 1.07),
+}
 
 
 def load(team: str) -> Presentation:
@@ -42,7 +57,7 @@ def accent1(prs: Presentation) -> str:
 
 
 @pytest.mark.parametrize("team", TEAMS)
-def test_template_has_the_eight_layouts_and_no_slides(team: str) -> None:
+def test_template_has_the_master_layouts_and_no_slides(team: str) -> None:
     prs = load(team)
     assert [layout.name for layout in prs.slide_layouts] == EXPECTED_LAYOUTS
     assert len(prs.slides) == 0
@@ -66,10 +81,19 @@ def test_chart_and_table_layouts_have_native_placeholders(team: str) -> None:
     layouts = {layout.name: layout for layout in load(team).slide_layouts}
     types = {
         name: {ph.placeholder_format.type for ph in layouts[name].placeholders}
-        for name in ("Chart and Text", "Table")
+        for name in ("Title, Text and Chart", "Title and Table")
     }
-    assert PP_PLACEHOLDER.CHART in types["Chart and Text"]
-    assert PP_PLACEHOLDER.TABLE in types["Table"]
+    assert PP_PLACEHOLDER.CHART in types["Title, Text and Chart"]
+    assert PP_PLACEHOLDER.TABLE in types["Title and Table"]
+
+
+@pytest.mark.parametrize("team", TEAMS)
+def test_text_boxes_sit_where_the_master_puts_them(team: str) -> None:
+    layouts = {layout.name: layout for layout in load(team).slide_layouts}
+    for (name, idx), expected in MASTER_POSITIONS.items():
+        ph = next(p for p in layouts[name].placeholders if p.placeholder_format.idx == idx)
+        box = tuple(round(Emu(v).inches, 2) for v in (ph.left, ph.top, ph.width, ph.height))
+        assert box == expected, (team, name, idx)
 
 
 def test_all_teams_share_the_same_layouts_and_placeholders() -> None:

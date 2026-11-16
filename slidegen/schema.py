@@ -230,10 +230,8 @@ def check_deck(
         layout = catalog.layout(slide.layout)
         allowed = {slot.name for slot in layout.slots}
         for name, value in slide.slots.items():
-            if name not in allowed and value:
-                errors.append(
-                    f"{at}.{name}: layout {layout.id} has no '{name}' slot; leave it empty"
-                )
+            if name not in allowed and value:  # never placed on the slide: ignore it
+                warnings.append(f"{at}.{name}: layout {layout.id} has no '{name}' slot; ignored")
         table_box = next((slot for slot in layout.slots if slot.kind == "list"), None)
         for slot in layout.slots:
             value = slide.slots.get(slot.name)

@@ -3,8 +3,7 @@
 1. pick the template and load its cached layout catalog;
 2. one structured model call;
 3. validate the answer; if it is invalid, one repair call with the error list (never a loop);
-4. if only a table or chart is still wrong, show it as bullets and keep the model's deck;
-   if anything else is still wrong, or the API cannot be reached: a plain deck from the notes;
+4. if the repair fails too, or the API cannot be reached: a plain deck built from the notes;
 5. build the deck, then re-open the saved file and check it.
 
 A missing or rejected API key is not covered by the fallback: only the user can fix it.
@@ -16,24 +15,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from slidegen.deck import build_deck, check_deck_file
 from slidegen.llm import LLMError, MissingKeyError, RejectedKeyError, Usage
 from slidegen.prompts import first_messages, repair_messages
-from slidegen.schema import (
-    BULLET_MARKS,
-    MAX_SLIDES,
-    Chart,
-    Deck,
-    DeckError,
-    Slide,
-    Table,
-    check_deck,
-    extract_json,
-    parse_deck,
-    wire_schema,
-)
+from slidegen.schema import BULLET_MARKS, MAX_SLIDES, Deck, DeckError, parse_deck, wire_schema
 from slidegen.template import Catalog, Layout, load_catalog, resolve_template
 
 
@@ -89,11 +74,7 @@ def ask_model(notes: str, catalog: Catalog, client, result: Result) -> Deck:
             result.outcome = "repaired"
             result.warnings += [f"first answer rejected: {problem}" for problem in error.errors]
             messages = repair_messages(notes, catalog, answer, error.errors)
-            answer = call(client, messages, schema, result)
-            try:
-                deck, warnings = parse_deck(answer, catalog, notes)
-            except DeckError as still:
-                deck, warnings = visuals_as_bullets(answer, catalog, notes, still)
+            deck, warnings = parse_deck(call(client, messages, schema, result), catalog, notes)
     except (MissingKeyError, RejectedKeyError):
         raise
     except (LLMError, DeckError) as error:
@@ -102,70 +83,6 @@ def ask_model(notes: str, catalog: Catalog, client, result: Result) -> Deck:
         return fallback_deck(notes, catalog)
     result.warnings += warnings
     return deck
-
-
-VISUAL_ERROR = re.compile(r"^slides\[(\d+)\]\.(table|chart)")
-
-
-def visuals_as_bullets(
-    answer: str, catalog: Catalog, notes: str, error: DeckError
-) -> tuple[Deck, list[str]]:
-    """Keep the model's deck when only a table or chart is still wrong after the repair.
-
-    Those slides move to the plain title-and-bullets layout, and the table rows or chart
-    values become bullets, so no content is lost. Invented numbers are never kept: if any
-    error is about a number missing from the notes, the error is raised again.
-    """
-    matches = [VISUAL_ERROR.match(message) for message in error.errors]
-    if not all(matches) or any("does not appear in the notes" in m for m in error.errors):
-        raise error
-    try:
-        deck = Deck.model_validate(extract_json(answer))
-    except ValidationError:
-        raise error from None
-    simplified = sorted({int(match.group(1)) for match in matches})
-    plain = plain_layout(catalog)
-    body = next(slot.name for slot in plain.slots if slot.kind == "list")
-    texts = [slot.name for slot in plain.slots if slot.kind == "text"]  # title, subheadline...
-    for i in simplified:
-        slide = deck.slides[i]
-        layout = catalog.layout(slide.layout)
-        bullets = [
-            b for s in layout.slots if s.kind == "list" for b in slide.slots.get(s.name) or []
-        ]
-        bullets += _table_bullets(slide.table) + _chart_bullets(slide.chart)
-        kept = {name: slide.slots[name] for name in texts if slide.slots.get(name)}
-        deck.slides[i] = Slide.model_validate({"layout": plain.id, **kept, body: bullets})
-    errors, warnings = check_deck(deck, catalog, notes)
-    if errors:
-        raise DeckError(errors)
-    notes_on_change = [f"slides[{i}]: table or chart shown as bullets" for i in simplified]
-    return deck, warnings + notes_on_change
-
-
-def _table_bullets(table: Table | None) -> list[str]:
-    """One bullet per row: "Next.js: Load (s) 1.1, Weeks 18"."""
-    if table is None:
-        return []
-    return [
-        f"{row[0]}: "
-        + ", ".join(
-            f"{name} {cell}" for name, cell in zip(table.columns[1:], row[1:], strict=False)
-        )
-        for row in table.rows
-        if row
-    ]
-
-
-def _chart_bullets(chart: Chart | None) -> list[str]:
-    """One bullet per category: "Next.js: Lighthouse 96"."""
-    if chart is None:
-        return []
-    return [
-        f"{category}: " + ", ".join(f"{s.name} {s.values[i]:g}" for s in chart.series
-                                     if i < len(s.values))
-        for i, category in enumerate(chart.categories)
-    ]  # fmt: skip
 
 
 def call(client, messages: list[dict], schema: dict, result: Result) -> str:

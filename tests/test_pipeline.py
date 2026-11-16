@@ -138,3 +138,10 @@ def test_fallback_deck_from_a_single_line(catalog: Catalog) -> None:
     assert [(s.slots["title"], s.slots["body"]) for s in deck.slides] == [
         ("just one thought", ["just one thought"])
     ]
+
+
+def test_fallback_title_is_the_first_sentence(catalog: Catalog) -> None:
+    notes = "Website relaunch: which framework? Current site is 9 years old.\n- 4.8 s mobile load"
+    [slide] = fallback_deck(notes, catalog).slides
+    assert slide.slots["title"] == "Website relaunch: which framework?"
+    assert slide.slots["body"] == ["Current site is 9 years old.", "4.8 s mobile load"]

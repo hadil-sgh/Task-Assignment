@@ -127,15 +127,54 @@ def test_table_replaces_the_bullet_box(catalog: Catalog) -> None:
     assert errors == ["slides[0].body: leave it empty, the table takes its place"]
 
 
-def test_table_and_chart_limits(catalog: Catalog) -> None:
+def test_limit_errors_say_exactly_what_is_wrong(catalog: Catalog) -> None:
+    """Precise messages, so the single repair call can fix them."""
     table = changed(TABLE_SLIDE)
-    table["table"]["rows"] = [["Next.js", "1.1", "150", "18"]] * 7 + [["Nuxt", "1.3"]]
+    table["table"]["rows"] = [["Next.js", "1.1", "150", "18"]] * 8 + [["Nuxt", "1.3"]]
+    table["table"]["columns"][0] = "Framework option under consideration here"  # 41 characters
     chart = changed(CHART_SLIDE)
     chart["chart"]["series"][0]["values"] = [1.1, 1.3]
     errors = errors_of(answer(table, chart), catalog)
-    assert "slides[0].table: use 2 to 5 columns and 1 to 6 rows" in errors
-    assert "slides[0].table: every row needs one cell per column" in errors
-    assert "slides[1].chart: every series needs one value per category" in errors
+    assert errors == [
+        "slides[0].table: 4 columns and 9 rows; use 2 to 6 columns and 1 to 8 rows "
+        "(merge or drop columns)",
+        "slides[0].table: row 9 has 2 cells for 4 columns",
+        'slides[0].table: cell "Framework option under consideration here" has 41 characters; '
+        "shorten it to 40",
+        "slides[1].chart: series 'Load time' has 2 values for 3 categories",
+    ]
+
+
+def test_tables_up_to_8_rows_and_6_columns_fit_the_box(tmp_path: Path, catalog: Catalog) -> None:
+    columns = ["Option", "Load (s)", "Cost (EUR k)", "Weeks", "Team fit", "Risk"]
+    rows = [["Next.js", "1.1", "150", "18", "React skills match", "Vendor lock-in"]] * 8
+    big = changed(TABLE_SLIDE, table={"columns": columns, "rows": rows})
+    deck, _ = parse_deck(answer(big), catalog, NOTES)
+    out = tmp_path / "deck.pptx"
+    build_deck(deck, catalog, MASTER, out)
+    [frame] = [s for s in Presentation(out).slides[0].shapes if s.has_table]
+    assert Emu(frame.top + frame.height).inches <= 1.98 + 4.62 + 0.01  # inside the body box
+
+
+def test_a_table_still_wrong_after_repair_becomes_bullets(tmp_path: Path) -> None:
+    too_wide = changed(TABLE_SLIDE)
+    too_wide["table"]["columns"] = ["Option", "a", "b", "c", "d", "e", "f"]
+    too_wide["table"]["rows"] = [["Next.js", "1.1", "150", "18", "x", "y", "z"]]
+    mock = MockClient([answer(too_wide, CHART_SLIDE)])  # the repair repeats the same answer
+    result = generate(NOTES, mock, tmp_path / "deck.pptx")
+    assert result.outcome == "repaired"  # the model's deck is kept, not the plain fallback
+    assert "slides[0]: table or chart shown as bullets" in result.warnings
+    first, second = Presentation(result.path).slides
+    assert "Next.js: a 1.1, b 150, c 18" in first.placeholders[18].text_frame.text
+    assert any(getattr(s, "has_chart", False) and s.has_chart for s in second.shapes)
+    assert result.problems == []
+
+
+def test_invented_numbers_are_never_kept_as_bullets(tmp_path: Path) -> None:
+    invented = changed(TABLE_SLIDE)
+    invented["table"]["rows"][0][2] = "999"
+    result = generate(NOTES, MockClient([answer(invented)]), tmp_path / "deck.pptx")
+    assert result.outcome == "fallback"  # the plain deck from the notes, without the 999
 
 
 # ---------------------------------------------------------------- building

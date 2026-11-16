@@ -1,0 +1,8 @@
+Website relaunch: which framework should we use?
+Problem: current PHP site loads in 4.8 s on mobile and editors cannot update content.
+Goal: launch before Hannover Messe in April 2027, budget EUR 180k.
+Next.js: 1.1 s load, EUR 150k, 18 weeks.
+Nuxt: 1.3 s load, EUR 165k, 21 weeks.
+Astro: 0.8 s load, EUR 140k, 19 weeks.
+Lighthouse scores: Next.js 96, Nuxt 93, Astro 99.
+Decision: choose Next.js because it fits the React team and meets the deadline; approve by 30 Nov.

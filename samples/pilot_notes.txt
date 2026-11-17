@@ -1,0 +1,20 @@
+Order intake automation: which plant pilots first?
+Today orders arrive by email and PDF and are typed into the ERP by hand.
+Manual entry takes 12 minutes per order on average.
+Goal of the pilot: read orders automatically and create draft orders in the ERP.
+Three candidate plants: North, South and East.
+Plant North: 3,100 orders a year, 4% entry errors, IT support on site.
+Plant South: 2,400 orders a year, 6% entry errors, no IT support on site.
+Plant East: 1,800 orders a year, 3% entry errors, IT support on site.
+Plant North has the most standard order formats: 70% of its orders use one template.
+Plant South has the most scanned PDFs, which are harder to read.
+Plant East is planning an ERP upgrade in spring 2027.
+Pilot length 8 weeks, budget EUR 40k including licences and setup.
+Success criteria: 80% of orders read without correction, entry time under 3 minutes.
+A sales person still checks and approves every draft order during the pilot.
+Risk: order formats change when customers update their systems.
+Risk: the works council must be informed before the pilot starts.
+Go-live target for the first plant: March 2027.
+Recommendation: start in Plant North, highest volume, standard formats, IT on site.
+Plant South second, after the reading of scanned PDFs is improved.
+Decision by 30 Nov so the pilot can start in January.
